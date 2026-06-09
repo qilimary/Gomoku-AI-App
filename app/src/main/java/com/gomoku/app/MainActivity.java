@@ -1,6 +1,7 @@
 package com.gomoku.app;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Canvas;
@@ -36,7 +37,7 @@ public class MainActivity extends Activity {
         private final int BOARD_SIZE = 15;
         private int[][] board = new int[BOARD_SIZE][BOARD_SIZE];
         
-        // 双缓冲技术：引入专门用于显示的 UI 棋盘
+        // 双缓冲显示棋盘
         private int[][] displayBoard = new int[BOARD_SIZE][BOARD_SIZE];
         
         private ArrayList<int[]> moveHistory = new ArrayList<>();
@@ -45,12 +46,11 @@ public class MainActivity extends Activity {
         private int gameMode = 0; 
         private int humanColor = 1; 
         private int currentPlayer = 1; 
-        private int aiDifficultyDepth = 7; // 默认调整为7
+        private int aiDifficultyDepth = 7; 
         private volatile boolean aiThinking = false;
         private volatile boolean gameOver = false;
         private String statusMessage = "";
 
-        // 思考计时器变量
         private volatile int thinkingSeconds = 0;
 
         private float w, margin, boardSize, cellSize, startX, startY;
@@ -63,13 +63,11 @@ public class MainActivity extends Activity {
         private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private Random rand = new Random();
 
-        // 核心内存优化：避免局部变量在千万级树搜索中重复创建数组引发严重GC卡顿
         private ThreadLocal<int[]> threadLocalLine = new ThreadLocal<int[]>() {
             @Override
             protected int[] initialValue() { return new int[9]; }
         };
 
-        // 标准化、高智能化的棋形匹配库（去掉了 static 以修复 Java 内部类的语法报错）
         final int[][] LIVE_FOUR = {{0,1,1,1,1,0}};
         final int[][] DEAD_FOUR = {{1,1,1,1,0}, {0,1,1,1,1}, {1,0,1,1,1}, {1,1,0,1,1}, {1,1,1,0,1}};
         final int[][] LIVE_THREE = {{0,1,1,1,0,0}, {0,0,1,1,1,0}, {0,1,0,1,1,0}, {0,1,1,0,1,0}};
@@ -198,7 +196,6 @@ public class MainActivity extends Activity {
             if (gameMode == 0 && humanColor == 2) triggerAiMove();
         }
 
-        // 推算预计时间 (基于优化后的Java引擎能力进行合理映射)
         private int getEstimatedTime(int d) {
             if (d <= 5) return 0;
             switch(d) {
@@ -230,10 +227,9 @@ public class MainActivity extends Activity {
             }
         }
 
-        // ======================== 超高性能核心算法 ========================
-
         private boolean isForbiddenMove(int[][] b, int r, int c, int p) {
-            if (p == 2) return false; // 白棋无禁手
+            // 按照我们的定制规则，只有黑棋有禁手限制
+            if (p == 2) return false; 
             int original = b[r][c];
             b[r][c] = p;
             if (checkWin(b, r, c, p)) { b[r][c] = original; return false; }
@@ -241,8 +237,7 @@ public class MainActivity extends Activity {
             int[][] dirs = {{1,0}, {0,1}, {1,1}, {1,-1}};
             for (int[] d : dirs) {
                 int[] line = extractLine(b, r, c, d);
-                if (countContinuous(line, 4, p) >= 6) { b[r][c] = original; return true; } // 长连禁手
-                // 任一活四、冲四都算成一"四"
+                if (countContinuous(line, 4, p) >= 6) { b[r][c] = original; return true; } 
                 if (matchAnyPattern(line, p, LIVE_FOUR) || matchAnyPattern(line, p, DEAD_FOUR)) fours++;
                 if (matchAnyPattern(line, p, LIVE_THREE)) liveThrees++;
             }
@@ -257,7 +252,6 @@ public class MainActivity extends Activity {
             return count;
         }
 
-        // GC优化：不再频繁 new 数组对象，而是直接复用线程内分配的缓冲数组
         private int[] extractLine(int[][] b, int r, int c, int[] d) {
             int[] line = threadLocalLine.get();
             for (int i = -4; i <= 4; i++) {
@@ -268,7 +262,6 @@ public class MainActivity extends Activity {
             return line;
         }
 
-        // 高效零对象内存分配验证引擎
         private boolean matchAnyPattern(int[] line, int p, int[][] patterns) {
             for (int[] pat : patterns) {
                 for (int i = 0; i <= 9 - pat.length; i++) {
@@ -297,7 +290,6 @@ public class MainActivity extends Activity {
                 if (p == 1 && consecutive == 5) { b[r][c] = original; return 1000000; }
                 if (p == 2 && consecutive >= 5) { b[r][c] = original; return 1000000; }
                 
-                // 将活四与冲四剥离赋予不同分数，极大提升低层深度的防守拦截智商
                 if (matchAnyPattern(line, p, LIVE_FOUR)) { liveFours++; score += 100000; } 
                 else if (matchAnyPattern(line, p, DEAD_FOUR)) { deadFours++; score += 3000; }
                 
@@ -318,7 +310,7 @@ public class MainActivity extends Activity {
             updateStatusMsg();
             invalidate();
             removeCallbacks(timerRunnable);
-            postDelayed(timerRunnable, 1000); // 启动计时器
+            postDelayed(timerRunnable, 1000); 
 
             new Thread(() -> {
                 int[] bestMove = iterativeDeepening(aiDifficultyDepth);
@@ -538,24 +530,34 @@ public class MainActivity extends Activity {
         }
 
         private void drawUI(Canvas canvas) {
+            // 模式按钮
             String modeStr = gameMode == 0 ? "模式: 人机对战" : "模式: 双人对战";
             float modeBtnW = w * 0.45f, modeBtnH = w * 0.12f;
             float modeBtnX = w / 2 - modeBtnW / 2, modeBtnY = margin;
             drawBtn(canvas, modeStr, modeBtnX, modeBtnY, modeBtnX + modeBtnW, modeBtnY + modeBtnH, Color.parseColor("#E0E0E0"), Color.BLACK, w * 0.04f);
 
+            // 右上角规则按钮 (旺柴 🐶)
+            float ruleBtnW = w * 0.10f;
+            float ruleBtnX = w - margin - ruleBtnW;
+            drawBtn(canvas, "🐶", ruleBtnX, margin, ruleBtnX + ruleBtnW, margin + ruleBtnW, Color.parseColor("#EEEEEE"), Color.BLACK, w * 0.05f);
+
             float bottomStartY = startY + boardSize + w * 0.1f;
 
+            // 状态文字
             paint.setColor(Color.RED); 
             paint.setStyle(Paint.Style.FILL); 
             paint.setTextSize(w * 0.055f); 
             paint.setTextAlign(Paint.Align.CENTER);
             canvas.drawText(statusMessage, w / 2f, bottomStartY, paint);
 
-            float btnW = w * 0.26f, btnH = w * 0.12f, space = (w - 3 * btnW) / 4f;
+            // 【UI缩减20%】计算新宽度和间隔
+            float btnW = w * 0.20f, btnH = w * 0.096f; 
+            float space = (w - 3 * btnW) / 4f;
+            
             float row1Y = bottomStartY + w * 0.08f;
-            drawBtn(canvas, "悔棋", space, row1Y, space + btnW, row1Y + btnH, Color.parseColor("#E0E0E0"), Color.BLACK, w * 0.045f);
-            drawBtn(canvas, "重玩", space*2 + btnW, row1Y, space*2 + btnW*2, row1Y + btnH, Color.parseColor("#4CAF50"), Color.WHITE, w * 0.045f);
-            drawBtn(canvas, "退出", space*3 + btnW*2, row1Y, space*3 + btnW*3, row1Y + btnH, Color.parseColor("#F44336"), Color.WHITE, w * 0.045f);
+            drawBtn(canvas, "悔棋", space, row1Y, space + btnW, row1Y + btnH, Color.parseColor("#E0E0E0"), Color.BLACK, w * 0.04f);
+            drawBtn(canvas, "重玩", space*2 + btnW, row1Y, space*2 + btnW*2, row1Y + btnH, Color.parseColor("#4CAF50"), Color.WHITE, w * 0.04f);
+            drawBtn(canvas, "退出", space*3 + btnW*2, row1Y, space*3 + btnW*3, row1Y + btnH, Color.parseColor("#F44336"), Color.WHITE, w * 0.04f);
 
             if (gameMode == 0) {
                 float row2Y = row1Y + btnH + w * 0.04f;
@@ -563,22 +565,21 @@ public class MainActivity extends Activity {
                 int c2 = aiDifficultyDepth == 7 ? Color.parseColor("#64B5F6") : Color.parseColor("#EEEEEE");
                 int c3 = aiDifficultyDepth == 11 ? Color.parseColor("#FF8A65") : Color.parseColor("#EEEEEE");
                 
-                // 深度设定修改为：4、7、11
-                drawBtn(canvas, "简单(4层)", space, row2Y, space + btnW, row2Y + btnH, c1, Color.BLACK, w * 0.038f);
-                drawBtn(canvas, "普通(7层)", space*2 + btnW, row2Y, space*2 + btnW*2, row2Y + btnH, c2, Color.BLACK, w * 0.038f);
-                drawBtn(canvas, "困难(11层)", space*3 + btnW*2, row2Y, space*3 + btnW*3, row2Y + btnH, c3, Color.BLACK, w * 0.038f);
+                drawBtn(canvas, "简单(4)", space, row2Y, space + btnW, row2Y + btnH, c1, Color.BLACK, w * 0.035f);
+                drawBtn(canvas, "普通(7)", space*2 + btnW, row2Y, space*2 + btnW*2, row2Y + btnH, c2, Color.BLACK, w * 0.035f);
+                drawBtn(canvas, "困难(11)", space*3 + btnW*2, row2Y, space*3 + btnW*3, row2Y + btnH, c3, Color.BLACK, w * 0.032f);
 
-                // 增加自由深度控制面板 (1~20层任意调)
                 float row3Y = row2Y + btnH + w * 0.04f;
-                drawBtn(canvas, "-", space, row3Y, space + btnW, row3Y + btnH, Color.parseColor("#E0E0E0"), Color.BLACK, w * 0.06f);
+                drawBtn(canvas, "-", space, row3Y, space + btnW, row3Y + btnH, Color.parseColor("#E0E0E0"), Color.BLACK, w * 0.05f);
                 
+                // 画中间的可点击区域
                 paint.setColor(Color.BLACK);
                 paint.setTextSize(w * 0.045f);
                 Paint.FontMetrics fm = paint.getFontMetrics();
                 float textY = row3Y + btnH / 2f - (fm.descent + fm.ascent) / 2f;
                 canvas.drawText("自由深度: " + aiDifficultyDepth, w / 2f, textY, paint);
 
-                drawBtn(canvas, "+", w - space - btnW, row3Y, w - space, row3Y + btnH, Color.parseColor("#E0E0E0"), Color.BLACK, w * 0.06f);
+                drawBtn(canvas, "+", w - space - btnW, row3Y, w - space, row3Y + btnH, Color.parseColor("#E0E0E0"), Color.BLACK, w * 0.05f);
             }
         }
 
@@ -595,16 +596,46 @@ public class MainActivity extends Activity {
             canvas.drawText(text, l + (r - l) / 2f, textY, paint);
         }
 
+        private void showRulesDialog() {
+            new AlertDialog.Builder(getContext())
+                .setTitle("🐶 游戏规则与说明")
+                .setMessage("【胜利条件】\n黑棋必须恰好5子连珠才算胜利；白棋5子或以上均算胜利。\n\n" +
+                            "【禁手保护(防误触)】\n为平衡先后手，黑棋有禁手限制（三三、四四、长连）。但本游戏自带防误触保护，当玩家点到禁手位置时，只会弹出提示阻止落子，绝对不会直接判负！尽情试错吧！\n\n" +
+                            "【深度调节说明】\n- 点击下方中间的【自由深度: x】文字，可快捷滑动选择1-20层。\n- 1~5层为极速反应，适合新手；\n- 6~11层AI具备深层防守与进攻算力；\n- 12层以上极耗算力，挑战你的设备极限！")
+                .setPositiveButton("我知道了", null)
+                .show();
+        }
+
+        private void showDepthSelectorDialog() {
+            String[] options = new String[20];
+            for (int i = 0; i < 20; i++) {
+                options[i] = "思考深度: " + (i + 1) + " 层";
+            }
+            new AlertDialog.Builder(getContext())
+                .setTitle("调整AI思考深度")
+                .setItems(options, (dialog, which) -> {
+                    setDepth(which + 1);
+                })
+                .show();
+        }
+
         @Override
         public boolean onTouchEvent(MotionEvent event) {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 float ex = event.getX(), ey = event.getY();
 
                 float modeBtnW = w * 0.45f, modeBtnH = w * 0.12f, modeBtnX = w / 2 - modeBtnW / 2, modeBtnY = margin;
-                float btnW = w * 0.26f, btnH = w * 0.12f, space = (w - 3 * btnW) / 4f;
+                float ruleBtnW = w * 0.10f, ruleBtnX = w - margin - ruleBtnW;
+                
+                float btnW = w * 0.20f, btnH = w * 0.096f, space = (w - 3 * btnW) / 4f;
                 float row1Y = startY + boardSize + w * 0.18f;
                 float row2Y = row1Y + btnH + w * 0.04f;
                 float row3Y = row2Y + btnH + w * 0.04f;
+
+                // 规则按钮拦截
+                if (checkClick(ex, ey, ruleBtnX, margin, ruleBtnX + ruleBtnW, margin + ruleBtnW)) {
+                    showRulesDialog(); return true;
+                }
 
                 if (checkClick(ex, ey, modeBtnX, modeBtnY, modeBtnX + modeBtnW, modeBtnY + modeBtnH)) {
                     if (aiThinking) return true;
@@ -612,22 +643,27 @@ public class MainActivity extends Activity {
                     restartGame(); 
                     return true;
                 }
+                
                 if (checkClick(ex, ey, space, row1Y, space + btnW, row1Y + btnH)) { undoMove(); return true; }
                 if (checkClick(ex, ey, space*2 + btnW, row1Y, space*2 + btnW*2, row1Y + btnH)) { if (!aiThinking) restartGame(); return true; }
                 if (checkClick(ex, ey, space*3 + btnW*2, row1Y, space*3 + btnW*3, row1Y + btnH)) { System.exit(0); return true; }
 
                 if (gameMode == 0 && !aiThinking) {
-                    // 固定层数点击
                     if (checkClick(ex, ey, space, row2Y, space + btnW, row2Y + btnH)) { setDepth(4); return true; }
                     if (checkClick(ex, ey, space*2 + btnW, row2Y, space*2 + btnW*2, row2Y + btnH)) { setDepth(7); return true; }
                     if (checkClick(ex, ey, space*3 + btnW*2, row2Y, space*3 + btnW*3, row2Y + btnH)) { setDepth(11); return true; }
-                    // 自由层数点击 (-/+)
+                    
                     if (checkClick(ex, ey, space, row3Y, space + btnW, row3Y + btnH)) {
                         if (aiDifficultyDepth > 1) setDepth(aiDifficultyDepth - 1);
                         return true;
                     }
                     if (checkClick(ex, ey, w - space - btnW, row3Y, w - space, row3Y + btnH)) {
                         if (aiDifficultyDepth < 20) setDepth(aiDifficultyDepth + 1);
+                        return true;
+                    }
+                    // 点击中间文字区域弹出选项卡
+                    if (checkClick(ex, ey, space + btnW, row3Y, w - space - btnW, row3Y + btnH)) {
+                        showDepthSelectorDialog();
                         return true;
                     }
                 }
@@ -638,8 +674,7 @@ public class MainActivity extends Activity {
                         int r = Math.round((ey - startY) / cellSize);
                         
                         if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] == 0) {
-                            if (currentPlayer == 1 && isForbiddenMove(board, r, c, 1)) {
-                                // 真人下到禁手仅弹提示并阻断流程，不判输
+                            if (isForbiddenMove(board, r, c, currentPlayer)) {
                                 statusMessage = "禁手提示：黑棋不可下此位置！";
                                 invalidate();
                             } else {
@@ -680,7 +715,7 @@ public class MainActivity extends Activity {
             moveHistory.add(new int[]{r, c, p});
             currentZobristHash ^= zobristTable[r][c][p]; 
             lastMoveHighlight = new int[]{r, c};
-            syncBoard(); // 更新前台 UI
+            syncBoard(); 
         }
 
         private void undoMove() {
