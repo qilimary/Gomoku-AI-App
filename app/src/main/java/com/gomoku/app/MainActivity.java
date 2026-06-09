@@ -178,7 +178,7 @@ public class MainActivity extends Activity {
             }
         }
 
-        // ======================== 核心算法：保留优异的TSS与禁手 ========================
+        // ======================== 核心算法 ========================
 
         private boolean isForbiddenMove(int[][] b, int r, int c, int p) {
             b[r][c] = p;
@@ -411,7 +411,7 @@ public class MainActivity extends Activity {
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             
-            // 动态响应屏幕尺寸 (完全告别变形和黑框)
+            // 动态响应屏幕尺寸
             w = getWidth();
             margin = w * 0.06f; 
             boardSize = w - 2 * margin;
@@ -425,22 +425,32 @@ public class MainActivity extends Activity {
         }
 
         private void drawGrid(Canvas canvas) {
-            paint.setColor(Color.BLACK); 
-            paint.setStrokeWidth(3f);
+            paint.setColor(Color.BLACK);
             
-            // 绘制外边框和网格
+            // 修复点：一定要设置成“描边（STROKE）”模式，否则会画一个实心大黑方块
+            paint.setStyle(Paint.Style.STROKE); 
+            paint.setStrokeWidth(5f); // 稍微加粗外边框
+            
+            // 绘制外边框
             canvas.drawRect(startX, startY, startX + boardSize, startY + boardSize, paint);
-            paint.setStrokeWidth(1.5f);
+            
+            // 绘制网格
+            paint.setStrokeWidth(2f);
             for (int i = 1; i < 14; i++) {
                 canvas.drawLine(startX, startY + i * cellSize, startX + boardSize, startY + i * cellSize, paint);
                 canvas.drawLine(startX + i * cellSize, startY, startX + i * cellSize, startY + boardSize, paint);
             }
 
-            // 绘制天元和星位
+            // 恢复“填充（FILL）”模式绘制星位和棋子
             paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.BLACK);
+            
+            // 绘制天元和星位
             int[] stars = {3, 7, 11};
             for (int r : stars) {
-                for (int c : stars) canvas.drawCircle(startX + c * cellSize, startY + r * cellSize, cellSize * 0.12f, paint);
+                for (int c : stars) {
+                    canvas.drawCircle(startX + c * cellSize, startY + r * cellSize, cellSize * 0.15f, paint);
+                }
             }
 
             // 绘制真实落子
@@ -488,6 +498,7 @@ public class MainActivity extends Activity {
 
             // 状态提示文本
             paint.setColor(Color.RED); 
+            paint.setStyle(Paint.Style.FILL); // 确保文字是实心的
             paint.setTextSize(w * 0.055f); 
             paint.setTextAlign(Paint.Align.CENTER);
             canvas.drawText(statusMessage, w / 2f, bottomStartY, paint);
@@ -516,8 +527,12 @@ public class MainActivity extends Activity {
         }
 
         private void drawBtn(Canvas canvas, String text, float l, float t, float r, float b, int bg, int fg, float textSize) {
+            // 确保按钮背景是实心的
+            paint.setStyle(Paint.Style.FILL);
             paint.setColor(bg); 
             canvas.drawRoundRect(l, t, r, b, w*0.02f, w*0.02f, paint);
+            
+            // 绘制文字
             paint.setColor(fg); 
             paint.setTextSize(textSize);
             paint.setTextAlign(Paint.Align.CENTER);
