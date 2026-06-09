@@ -12,8 +12,8 @@ import android.view.MotionEvent;
 import android.view.View;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class MainActivity extends Activity {
     private GameView gameView;
@@ -41,7 +41,6 @@ public class MainActivity extends Activity {
         private Random rand = new Random();
         private volatile boolean keepThinking = false; 
 
-        // 预定义的高频对象池与常数 (极大减少GC内存卡顿)
         private final int[][] G_DIRS = {{1,0}, {0,1}, {1,1}, {1,-1}};
         private final int[] G_STEPS = {1, -1};
         private final int[][] X_DIRS_CROSS = {{-1,0},{1,0},{0,-1},{0,1}};
@@ -57,13 +56,14 @@ public class MainActivity extends Activity {
         private ArrayList<int[]> g_moveHistory = new ArrayList<>();
         private int[] g_lastMoveHighlight = null;
         private int g_gameMode = 0, g_humanColor = 1, g_currentPlayer = 1; 
-        private int g_aiDepth = 7;
+        private int g_aiDepth = 4;
         private volatile boolean g_aiThinking = false, g_gameOver = false;
         private String g_statusMsg = "";
         private volatile int g_thinkingSec = 0;
         private long[][][] g_zobristTable = new long[G_BOARD_SIZE][G_BOARD_SIZE][3];
         private long g_zobristHash = 0;
-        private HashMap<Long, GTTEntry> g_ttTable = new HashMap<>();
+        // 关键修复：改为线程安全Map，防止并发读写引发底层崩溃导致死机
+        private ConcurrentHashMap<Long, GTTEntry> g_ttTable = new ConcurrentHashMap<>();
         private int[][] g_posWeights = new int[G_BOARD_SIZE][G_BOARD_SIZE];
         private ThreadLocal<int[]> g_tlLine = new ThreadLocal<int[]>() { @Override protected int[] initialValue() { return new int[9]; } };
 
@@ -93,9 +93,8 @@ public class MainActivity extends Activity {
         private long[][][] x_zobristTable = new long[10][9][14];
         private long[] x_zobristTurn = new long[2];
         private long x_zobristHash = 0;
-        private HashMap<Long, XTTEntry> x_ttTable = new HashMap<>();
+        private ConcurrentHashMap<Long, XTTEntry> x_ttTable = new ConcurrentHashMap<>();
         
-        // 【优化】通过预分配解决 AI 每秒上万次内存分配造成的严重卡顿
         private int[][] x_depthMoves = new int[30][150]; 
         private ThreadLocal<int[]> x_tlMoves = new ThreadLocal<int[]>() { @Override protected int[] initialValue() { return new int[150]; } };
         private ThreadLocal<int[]> x_tlCheckMoves = new ThreadLocal<int[]>() { @Override protected int[] initialValue() { return new int[150]; } };
@@ -128,20 +127,62 @@ public class MainActivity extends Activity {
             super(context);
             initGomokuEngine();
             initXiangqiEngine();
-            loadGameState();
+            loadGameState(); // 支持完全回溯
         }
 
-        private void saveGameState() {
-            SharedPreferences.Editor editor = getContext().getSharedPreferences("BoardGamesSave", Context.MODE_PRIVATE).edit();
-            editor.putInt("gameType", currentGameType);
-            editor.apply();
+        // ================= 数据持久化 (包含历史局面的读写) =================
+        public void saveGameState() {
+            SharedPreferences.Editor ed = getContext().getSharedPreferences("BoardGamesSave", Context.MODE_PRIVATE).edit();
+            ed.putInt("gameType", currentGameType);
+            ed.putInt("g_aiDepth", g_aiDepth); ed.putInt("x_aiDepth", x_aiDepth);
+            ed.putInt("g_gameMode", g_gameMode); ed.putInt("x_gameMode", x_gameMode);
+            ed.putInt("g_humanColor", g_humanColor);
+            
+            StringBuilder gHist = new StringBuilder();
+            for (int[] m : g_moveHistory) gHist.append(m[0]).append(",").append(m[1]).append(",").append(m[2]).append(";");
+            ed.putString("g_history", gHist.toString());
+
+            StringBuilder xHist = new StringBuilder();
+            for (XMoveRecord m : x_moveHistory) xHist.append(m.sr).append(",").append(m.sc).append(",").append(m.er).append(",").append(m.ec).append(";");
+            ed.putString("x_history", xHist.toString());
+            ed.apply();
         }
 
         private void loadGameState() {
             SharedPreferences prefs = getContext().getSharedPreferences("BoardGamesSave", Context.MODE_PRIVATE);
             currentGameType = prefs.getInt("gameType", 0);
-            restartGomoku(); 
-            restartXiangqi();
+            g_aiDepth = prefs.getInt("g_aiDepth", 4); x_aiDepth = prefs.getInt("x_aiDepth", 6);
+            g_gameMode = prefs.getInt("g_gameMode", 0); x_gameMode = prefs.getInt("x_gameMode", 0);
+            g_humanColor = prefs.getInt("g_humanColor", 1);
+            
+            restartGomoku(false); restartXiangqi(false);
+
+            // 通过重放历史完美还原棋盘和 Hash 状态
+            String gHist = prefs.getString("g_history", "");
+            if (!gHist.isEmpty()) {
+                String[] moves = gHist.split(";");
+                for (String ms : moves) {
+                    if (ms.isEmpty()) continue;
+                    String[] parts = ms.split(",");
+                    g_makeMove(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]), Integer.parseInt(parts[2]));
+                    g_currentPlayer = 3 - Integer.parseInt(parts[2]);
+                }
+            }
+
+            String xHist = prefs.getString("x_history", "");
+            if (!xHist.isEmpty()) {
+                String[] moves = xHist.split(";");
+                for (String ms : moves) {
+                    if (ms.isEmpty()) continue;
+                    String[] parts = ms.split(",");
+                    x_makeMove(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), Integer.parseInt(parts[3]));
+                }
+            }
+
+            syncGomokuBoard(); syncXiangqiBoard();
+            updateStatusMsg(); invalidate();
+            
+            if (g_moveHistory.isEmpty() && g_gameMode == 0 && g_humanColor == 2 && currentGameType == 0) triggerGomokuAiMove();
         }
 
         private void updateStatusMsg() {
@@ -177,15 +218,15 @@ public class MainActivity extends Activity {
             for (int i=0; i<G_BOARD_SIZE; i++) System.arraycopy(g_board[i], 0, g_displayBoard[i], 0, G_BOARD_SIZE);
         }
 
-        private void restartGomoku() {
+        private void restartGomoku(boolean triggerAI) {
             g_board = new int[G_BOARD_SIZE][G_BOARD_SIZE];
             g_moveHistory.clear();
             g_lastMoveHighlight = null; g_zobristHash = 0; g_ttTable.clear();
             g_aiThinking = false; keepThinking = false; g_gameOver = false;
             g_currentPlayer = 1;
-            if (g_gameMode == 0) g_humanColor = rand.nextBoolean() ? 1 : 2;
+            if (g_gameMode == 0 && triggerAI) g_humanColor = rand.nextBoolean() ? 1 : 2;
             syncGomokuBoard(); updateStatusMsg(); invalidate();
-            if (g_gameMode == 0 && g_humanColor == 2 && currentGameType == 0) triggerGomokuAiMove();
+            if (triggerAI && g_gameMode == 0 && g_humanColor == 2 && currentGameType == 0) triggerGomokuAiMove();
         }
 
         private boolean g_isForbiddenMove(int[][] b, int r, int c, int p) {
@@ -269,23 +310,31 @@ public class MainActivity extends Activity {
             removeCallbacks(timerRunnable); postDelayed(timerRunnable, 1000); 
 
             new Thread(() -> {
-                int[] bestMove = g_getOpeningMove();
-                if (bestMove == null) bestMove = g_iterativeDeepening(g_aiDepth);
-
-                final int[] finalBestMove = bestMove;
-                post(() -> {
-                    removeCallbacks(timerRunnable); g_aiThinking = false;
-                    if (!keepThinking) {
-                        g_statusMsg = "思考已中断，请重新落子";
-                        g_undoMove(); return;
-                    }
-                    if (finalBestMove != null && finalBestMove[0] != -1 && !g_gameOver) {
-                        g_makeMove(finalBestMove[0], finalBestMove[1], g_currentPlayer);
-                        if (g_checkWin(g_board, finalBestMove[0], finalBestMove[1], g_currentPlayer)) { g_statusMsg = "AI赢了！"; g_gameOver = true; } 
-                        else { g_currentPlayer = g_humanColor; updateStatusMsg(); }
-                    }
-                    invalidate();
-                });
+                int[] finalBestMove = null;
+                try {
+                    int[] bestMove = g_getOpeningMove();
+                    if (bestMove == null) bestMove = g_iterativeDeepening(g_aiDepth);
+                    finalBestMove = bestMove;
+                } catch (Exception e) {
+                    e.printStackTrace(); // 兜底防止意外崩溃导致假死
+                } finally {
+                    final int[] moveToPlay = finalBestMove;
+                    post(() -> {
+                        removeCallbacks(timerRunnable); g_aiThinking = false;
+                        if (!keepThinking) {
+                            g_statusMsg = "思考已中断，请重新落子";
+                            g_undoMove(); return;
+                        }
+                        if (moveToPlay != null && moveToPlay[0] != -1 && !g_gameOver) {
+                            g_makeMove(moveToPlay[0], moveToPlay[1], g_currentPlayer);
+                            if (g_checkWin(g_board, moveToPlay[0], moveToPlay[1], g_currentPlayer)) { g_statusMsg = "AI赢了！"; g_gameOver = true; } 
+                            else { g_currentPlayer = g_humanColor; updateStatusMsg(); }
+                        } else {
+                            g_statusMsg = "出现错误或无子可下";
+                        }
+                        invalidate();
+                    });
+                }
             }).start();
         }
 
@@ -344,14 +393,14 @@ public class MainActivity extends Activity {
             return new int[]{bestR, bestC, fScore};
         }
 
-        private boolean g_hasNeighbor(int[][] b, int r, int c) {
-            for (int i=Math.max(0,r-2); i<=Math.min(G_BOARD_SIZE-1,r+2); i++)
-                for (int j=Math.max(0,c-2); j<=Math.min(G_BOARD_SIZE-1,c+2); j++)
+        private boolean g_hasNeighbor(int[][] b, int r, int c, int dist) {
+            for (int i=Math.max(0,r-dist); i<=Math.min(G_BOARD_SIZE-1,r+dist); i++)
+                for (int j=Math.max(0,c-dist); j<=Math.min(G_BOARD_SIZE-1,c+dist); j++)
                     if (b[i][j] != 0) return true;
             return false;
         }
 
-        // 【大幅优化】Bounding Box 边界裁剪，速度提升超过 10 倍！
+        // 放宽到3格并加紧分支截断，确保兼顾聪明与速度
         private ArrayList<int[]> g_genMoves(int pvR, int pvC, int aiColor) {
             ArrayList<int[]> list = new ArrayList<>(20); boolean hasP = false; int hC = 3-aiColor;
             int minR = G_BOARD_SIZE, maxR = 0, minC = G_BOARD_SIZE, maxC = 0;
@@ -366,20 +415,20 @@ public class MainActivity extends Activity {
                 }
             }
             if (!hasP) { list.add(new int[]{7, 7, 0}); return list; }
-            minR = Math.max(0, minR-2); maxR = Math.min(G_BOARD_SIZE-1, maxR+2);
-            minC = Math.max(0, minC-2); maxC = Math.min(G_BOARD_SIZE-1, maxC+2);
+            minR = Math.max(0, minR-3); maxR = Math.min(G_BOARD_SIZE-1, maxR+3); // 范围放宽到3
+            minC = Math.max(0, minC-3); maxC = Math.min(G_BOARD_SIZE-1, maxC+3);
 
             if (pvR>=minR && pvR<=maxR && pvC>=minC && pvC<=maxC && g_board[pvR][pvC]==0)
                 list.add(new int[]{pvR, pvC, g_localScore(g_board,pvR,pvC,aiColor)+g_localScore(g_board,pvR,pvC,hC)+100000});
 
             for (int r=minR; r<=maxR; r++) {
                 for (int c=minC; c<=maxC; c++) {
-                    if (g_board[r][c]==0 && g_hasNeighbor(g_board,r,c) && (r!=pvR||c!=pvC))
+                    if (g_board[r][c]==0 && g_hasNeighbor(g_board,r,c, 3) && (r!=pvR||c!=pvC))
                         list.add(new int[]{r, c, g_localScore(g_board,r,c,aiColor)+g_localScore(g_board,r,c,hC)});
                 }
             }
             list.sort((a,b)->Integer.compare(b[2], a[2]));
-            return new ArrayList<>(list.subList(0, Math.min(15, list.size())));
+            return new ArrayList<>(list.subList(0, Math.min(12, list.size()))); // 保证节点不爆炸
         }
 
         private int g_evaluateBoard() {
@@ -436,14 +485,13 @@ public class MainActivity extends Activity {
             x_zobristTurn[0] = rand.nextLong(); x_zobristTurn[1] = rand.nextLong();
         }
 
-        private void restartXiangqi() {
+        private void restartXiangqi(boolean triggerAI) {
             String[] init = {
                 "rnbakabnr", ".........", ".c.....c.", "p.p.p.p.p", ".........",
                 ".........", "P.P.P.P.P", ".C.....C.", ".........", "RNBAKABNR"
             };
             for (int i=0; i<10; i++) x_board[i] = init[i].toCharArray();
             
-            // 【关键修复1】初始状态时准确算出 Hash 种子
             x_zobristHash = 0;
             for(int r=0; r<10; r++) {
                 for(int c=0; c<9; c++) {
@@ -457,6 +505,7 @@ public class MainActivity extends Activity {
             x_isRedTurn = true; x_aiThinking = false; keepThinking = false; x_gameOver = false;
             x_ttTable.clear();
             syncXiangqiBoard(); updateStatusMsg(); invalidate();
+            if (triggerAI && x_gameMode == 0 && !x_isRedTurn) triggerXiangqiAiMove();
         }
 
         private void syncXiangqiBoard() {
@@ -556,7 +605,6 @@ public class MainActivity extends Activity {
             return true;
         }
 
-        // 【重磅优化】反向扫描将军，省去穷举所有对手棋子的开销，提升数十倍搜索速度！
         private boolean x_isInCheck(char[][] b, boolean isRed) {
             int tr=-1, tc=-1;
             for (int r=0; r<10; r++) { 
@@ -567,7 +615,6 @@ public class MainActivity extends Activity {
             }
             if (tr==-1) return true; 
 
-            // 1. 查兵卒贴脸
             int forward = isRed ? -1 : 1;
             if (tr+forward >= 0 && tr+forward < 10 && b[tr+forward][tc] != '.' && x_isRed(b[tr+forward][tc]) != isRed) {
                 if (Character.toLowerCase(b[tr+forward][tc]) == 'p') return true;
@@ -579,7 +626,6 @@ public class MainActivity extends Activity {
                 if (Character.toLowerCase(b[tr][tc+1]) == 'p') return true;
             }
 
-            // 2. 查马后炮 (Knight)
             for (int[] d : X_DIRS_KNIGHT) {
                 int nr = tr + d[0], nc = tc + d[1];
                 if (nr >= 0 && nr < 10 && nc >= 0 && nc < 9) {
@@ -594,7 +640,6 @@ public class MainActivity extends Activity {
                 }
             }
 
-            // 3. 查车与炮的直线打击
             for (int[] d : X_DIRS_CROSS) {
                 int nr = tr + d[0], nc = tc + d[1];
                 int piecesBetween = 0;
@@ -636,25 +681,42 @@ public class MainActivity extends Activity {
             return true;
         }
 
+        // 大幅优化的专业级象棋评价系统
         private int x_evalBoard(char[][] b) {
             int score = 0;
             for (int r=0; r<10; r++) {
                 for (int c=0; c<9; c++) {
                     char p = b[r][c]; if (p=='.') continue;
                     int val = 0; boolean isR = x_isRed(p); char lp = Character.toLowerCase(p);
-                    if (lp=='k') val=10000; else if (lp=='r') val=900; else if (lp=='c') val=450;
-                    else if (lp=='n') val=400; else if (lp=='b') val=200; else if (lp=='a') val=200; else if (lp=='p') val=100;
                     
-                    if (lp=='p') {
-                        if (isR && r<5) val += 30 + (4-r)*10 + (3<=c&&c<=5?10:0);
-                        else if (!isR && r>4) val += 30 + (r-5)*10 + (3<=c&&c<=5?10:0);
-                    } else if (lp=='n') {
-                        val += (4 - Math.abs(c-4))*5; if (r==0||r==9||c==0||c==8) val-=15;
+                    if (lp=='k') val=10000; 
+                    else if (lp=='r') {
+                        val=900;
+                        if (c==3||c==4||c==5) val+=15; // 占中
                     } else if (lp=='c') {
-                        if (c==4) val+=10; if ((isR && r<3)||(!isR && r>6)) val+=15;
-                    } else if (lp=='r') {
-                        if ((r==9&&c==0)||(r==9&&c==8)||(r==0&&c==0)||(r==0&&c==8)) val-=25;
-                        else if (c==3||c==4||c==5) val+=10;
+                        val=450;
+                        if (c==4) val+=20; // 中炮极大威胁
+                    } else if (lp=='n') {
+                        val=400;
+                        val += (4 - Math.abs(c-4))*5; // 靠中心
+                        if (isR && r<=4) val += 30; // 红马过河或巡河
+                        else if (!isR && r>=5) val += 30; // 黑马过河或巡河
+                        // 卧槽马位置额外加分
+                        if (isR && (r==2 || r==1) && (c==2 || c==6)) val += 50;
+                        else if (!isR && (r==7 || r==8) && (c==2 || c==6)) val += 50;
+                    } else if (lp=='b') val=200; 
+                    else if (lp=='a') val=200; 
+                    else if (lp=='p') {
+                        val=100;
+                        if (isR && r<=4) {
+                            val += 150; // 红卒过河猛加分
+                            if (r>=1 && r<=3) val += 50; // 逼近九宫
+                            if (c>=3 && c<=5) val += 30; // 靠中
+                        } else if (!isR && r>=5) {
+                            val += 150; // 黑卒过河猛加分
+                            if (r>=6 && r<=8) val += 50; 
+                            if (c>=3 && c<=5) val += 30; 
+                        }
                     }
                     if (isR) score+=val; else score-=val;
                 }
@@ -668,19 +730,26 @@ public class MainActivity extends Activity {
             removeCallbacks(timerRunnable); postDelayed(timerRunnable, 1000);
 
             new Thread(() -> {
-                int[] bestMove = x_iterativeDeepening(x_aiDepth);
-                post(() -> {
-                    removeCallbacks(timerRunnable); x_aiThinking = false;
-                    if (!keepThinking) { x_statusMsg = "思考已中断"; x_undoMove(); return; }
-                    
-                    if (bestMove[0] != -1) {
-                        int sr=bestMove[0]>>12, sc=(bestMove[0]>>8)&0xF, er=(bestMove[0]>>4)&0xF, ec=bestMove[0]&0xF;
-                        x_makeMove(sr, sc, er, ec);
-                        if (x_checkGameOver(x_board, x_isRedTurn)) { x_statusMsg = "绝杀！"+(x_isRedTurn?"黑":"红")+"方胜利！"; x_gameOver = true; }
-                        else updateStatusMsg();
-                    } else { x_statusMsg = "绝杀！你胜利了！"; x_gameOver = true; }
-                    invalidate();
-                });
+                int[] finalBestMove = new int[]{-1};
+                try {
+                    finalBestMove = x_iterativeDeepening(x_aiDepth);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                } finally {
+                    final int best = finalBestMove[0];
+                    post(() -> {
+                        removeCallbacks(timerRunnable); x_aiThinking = false;
+                        if (!keepThinking) { x_statusMsg = "思考已中断"; x_undoMove(); return; }
+                        
+                        if (best != -1) {
+                            int sr=best>>12, sc=(best>>8)&0xF, er=(best>>4)&0xF, ec=best&0xF;
+                            x_makeMove(sr, sc, er, ec);
+                            if (x_checkGameOver(x_board, x_isRedTurn)) { x_statusMsg = "绝杀！"+(x_isRedTurn?"黑":"红")+"方胜利！"; x_gameOver = true; }
+                            else updateStatusMsg();
+                        } else { x_statusMsg = "绝杀！你胜利了！"; x_gameOver = true; }
+                        invalidate();
+                    });
+                }
             }).start();
         }
 
@@ -689,7 +758,7 @@ public class MainActivity extends Activity {
             for (int d=1; d<=maxDepth; d++) {
                 if (!keepThinking) break;
                 long hashKey = x_zobristHash ^ x_zobristTurn[x_isRedTurn?0:1];
-                int res = x_alphaBeta(d, Integer.MIN_VALUE+1, Integer.MAX_VALUE-1, x_isRedTurn, hashKey);
+                int res = x_alphaBeta(d, Integer.MIN_VALUE+1, Integer.MAX_VALUE-1, x_isRedTurn, hashKey, false);
                 if (!keepThinking) break;
                 XTTEntry en = x_ttTable.get(hashKey);
                 if (en != null && en.depth == d) {
@@ -700,12 +769,20 @@ public class MainActivity extends Activity {
             return new int[]{bestMove};
         }
 
-        private int x_alphaBeta(int depth, int alpha, int beta, boolean isMax, long hash) {
+        private int x_alphaBeta(int depth, int alpha, int beta, boolean isMax, long hash, boolean isNull) {
             if (x_isKingsFacing(x_board)) return isMax ? 100000 : -100000;
-            if (depth == 0) {
+            if (depth <= 0) {
                 if (isMax && x_isInCheck(x_board, false)) return 100000;
                 if (!isMax && x_isInCheck(x_board, true)) return -100000;
                 return x_evalBoard(x_board);
+            }
+
+            // 新增：空步裁剪（Null Move Pruning），极大提升象棋深度和速度
+            if (!isNull && depth >= 3 && !x_isInCheck(x_board, isMax)) {
+                long nextHash = hash ^ x_zobristTurn[0] ^ x_zobristTurn[1];
+                int val = x_alphaBeta(depth - 3, alpha, beta, !isMax, nextHash, true); // 减去 2 层深度(加上本身一层共3层)
+                if (isMax && val >= beta) return beta;
+                if (!isMax && val <= alpha) return alpha;
             }
 
             XTTEntry entry = x_ttTable.get(hash);
@@ -728,7 +805,6 @@ public class MainActivity extends Activity {
             }
             if (moveCount == 0) return isMax ? -100000 : 100000;
 
-            // 【重磅优化】MVV-LVA 先处理吃子的走法，引发极大程度的剪枝提速
             int captureCount = 0;
             for (int i=0; i<moveCount; i++) {
                 int m = allMoves[i], er = (m>>4)&0xF, ec = m&0xF;
@@ -752,7 +828,7 @@ public class MainActivity extends Activity {
                 long nextHash = hash ^ x_zobristTable[sr][sc][getPieceIndex(x_board[er][ec])] ^ x_zobristTable[er][ec][getPieceIndex(x_board[er][ec])] ^ x_zobristTurn[0]^x_zobristTurn[1];
                 if (cap!='.') nextHash ^= x_zobristTable[er][ec][getPieceIndex(cap)];
 
-                int val = x_alphaBeta(depth-1, alpha, beta, !isMax, nextHash);
+                int val = x_alphaBeta(depth-1, alpha, beta, !isMax, nextHash, false);
                 x_board[sr][sc] = x_board[er][ec]; x_board[er][ec] = cap;
 
                 if (isMax) {
@@ -772,7 +848,6 @@ public class MainActivity extends Activity {
             return bestVal;
         }
 
-        // 【关键修复2】动态增量同步 Zobrist Hash 防止缓存崩坏造成吃掉自己的棋子
         private void x_makeMove(int sr, int sc, int er, int ec) {
             char p = x_board[sr][sc];
             char cap = x_board[er][ec];
@@ -826,21 +901,29 @@ public class MainActivity extends Activity {
             canvas.drawColor(currentGameType == 0 ? Color.WHITE : Color.parseColor("#F5DEB3"));
 
             String modeStr = currentGameType == 0 ? (g_gameMode == 0 ? "模式: 人机对战" : "模式: 双人对战") : (x_gameMode == 0 ? "模式: 人机对战" : "模式: 双人对战");
-            float modeBtnW = w * 0.45f, modeBtnH = w * 0.12f, modeBtnX = w / 2 - modeBtnW / 2, modeBtnY = margin;
+            // 缩小顶部按钮
+            float modeBtnW = w * 0.40f, modeBtnH = w * 0.12f, modeBtnX = w / 2 - modeBtnW / 2, modeBtnY = margin;
             drawBtn(canvas, modeStr, modeBtnX, modeBtnY, modeBtnX + modeBtnW, modeBtnY + modeBtnH, Color.parseColor("#E0E0E0"), Color.BLACK, w * 0.04f);
 
-            // 修改为更直观的帮助图标
             float ruleBtnW = w * 0.10f; float ruleBtnX = w - margin - ruleBtnW;
             drawBtn(canvas, "❓", ruleBtnX, margin, ruleBtnX + ruleBtnW, margin + ruleBtnW, Color.parseColor("#EEEEEE"), Color.BLACK, w * 0.05f);
 
-            startY = margin + w * 0.25f;
+            // 完美对齐底部菜单计算
+            float g_size = w - 2 * margin;
+            float x_size = (g_size / 8f) * 9f;
+            float heightDiff = x_size - g_size;
 
-            if (currentGameType == 0) drawGomokuUI(canvas);
-            else drawXiangqiUI(canvas);
+            if (currentGameType == 0) {
+                startY = margin + w * 0.25f;
+                drawGomokuUI(canvas, g_size);
+            } else {
+                startY = margin + w * 0.25f - heightDiff / 2f; // 向上偏移以抵消高度差
+                drawXiangqiUI(canvas, g_size);
+            }
         }
 
-        private void drawGomokuUI(Canvas canvas) {
-            g_boardSize = w - 2 * margin; g_cellSize = g_boardSize / 14f; startX = margin;
+        private void drawGomokuUI(Canvas canvas, float size) {
+            g_boardSize = size; g_cellSize = g_boardSize / 14f; startX = margin;
             
             paint.setColor(Color.BLACK); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(5f);
             canvas.drawRect(startX, startY, startX+g_boardSize, startY+g_boardSize, paint);
@@ -872,8 +955,8 @@ public class MainActivity extends Activity {
             drawBottomMenu(canvas, startY + g_boardSize, g_statusMsg, g_aiThinking, g_aiDepth);
         }
 
-        private void drawXiangqiUI(Canvas canvas) {
-            x_boardWidth = w - 2 * margin; x_cellSize = x_boardWidth / 8f; x_boardHeight = x_cellSize * 9f; startX = margin;
+        private void drawXiangqiUI(Canvas canvas, float width) {
+            x_boardWidth = width; x_cellSize = x_boardWidth / 8f; x_boardHeight = x_cellSize * 9f; startX = margin;
 
             paint.setColor(Color.BLACK); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(4f);
             for (int r=0; r<10; r++) canvas.drawLine(startX, startY+r*x_cellSize, startX+x_boardWidth, startY+r*x_cellSize, paint);
@@ -932,7 +1015,6 @@ public class MainActivity extends Activity {
         }
 
         private void drawBottomMenu(Canvas canvas, float baseTop, String msg, boolean isThinking, int depth) {
-            // 【UI 微调】增加留白防止下方的状态栏文字盖住棋盘
             float bottomY = baseTop + w * 0.11f; 
             paint.setColor(Color.RED); paint.setStyle(Paint.Style.FILL); paint.setTextSize(w * 0.055f); paint.setTextAlign(Paint.Align.CENTER);
             canvas.drawText(msg, w/2f, bottomY, paint);
@@ -950,11 +1032,11 @@ public class MainActivity extends Activity {
             
             if (currentMode == 0) {
                 float row2Y = row1Y + btnH + w * 0.04f;
-                // 【改动】象棋深度升级为 3/6/9 三档
                 int d1 = currentGameType==0?4:3, d2 = currentGameType==0?7:6, d3 = currentGameType==0?11:9;
-                int c1 = depth==d1 ? Color.parseColor("#81C784") : Color.parseColor("#EEEEEE");
+                // 全部采用统一蓝色 #64B5F6
+                int c1 = depth==d1 ? Color.parseColor("#64B5F6") : Color.parseColor("#EEEEEE");
                 int c2 = depth==d2 ? Color.parseColor("#64B5F6") : Color.parseColor("#EEEEEE");
-                int c3 = depth==d3 ? Color.parseColor("#FF8A65") : Color.parseColor("#EEEEEE");
+                int c3 = depth==d3 ? Color.parseColor("#64B5F6") : Color.parseColor("#EEEEEE");
                 
                 drawBtn(canvas, "简单("+d1+")", space, row2Y, space+btnW, row2Y+btnH, c1, Color.BLACK, w*0.035f);
                 drawBtn(canvas, "普通("+d2+")", space*2+btnW, row2Y, space*2+btnW*2, row2Y+btnH, c2, Color.BLACK, w*0.035f);
@@ -994,19 +1076,23 @@ public class MainActivity extends Activity {
             if (event.getAction() != MotionEvent.ACTION_DOWN) return true;
             float ex = event.getX(), ey = event.getY();
 
-            float modeBtnW = w * 0.45f, modeBtnH = w * 0.12f, modeBtnX = w / 2 - modeBtnW / 2, modeBtnY = margin;
+            float modeBtnW = w * 0.40f, modeBtnH = w * 0.12f, modeBtnX = w / 2 - modeBtnW / 2, modeBtnY = margin;
             float ruleBtnW = w * 0.10f; float ruleBtnX = w - margin - ruleBtnW;
 
             if (checkClick(ex, ey, ruleBtnX, margin, ruleBtnX + ruleBtnW, margin + ruleBtnW)) { showRulesDialog(); return true; }
 
             if (checkClick(ex, ey, modeBtnX, modeBtnY, modeBtnX + modeBtnW, modeBtnY + modeBtnH)) {
                 if (g_aiThinking || x_aiThinking) return true;
-                if (currentGameType == 0) { g_gameMode = 1 - g_gameMode; restartGomoku(); } 
-                else { x_gameMode = 1 - x_gameMode; restartXiangqi(); }
+                if (currentGameType == 0) { g_gameMode = 1 - g_gameMode; restartGomoku(true); } 
+                else { x_gameMode = 1 - x_gameMode; restartXiangqi(true); }
                 return true;
             }
 
-            float baseTop = startY + (currentGameType == 0 ? g_boardSize : x_boardHeight);
+            float g_size = w - 2 * margin;
+            float x_size = (g_size / 8f) * 9f;
+            float heightDiff = x_size - g_size;
+            
+            float baseTop = margin + w * 0.25f + g_size; // 由于偏移对齐了，计算一个统一的基础Y坐标即可
             float bottomY = baseTop + w * 0.11f;
             float btnW = w * 0.20f, btnH = w * 0.096f, space = (w - 3*btnW) / 4f; float row1Y = bottomY + w * 0.06f;
 
@@ -1016,7 +1102,7 @@ public class MainActivity extends Activity {
                 return true;
             }
             if (checkClick(ex, ey, space*2+btnW, row1Y, space*2+btnW*2, row1Y+btnH)) {
-                if (currentGameType == 0) { if(!g_aiThinking) restartGomoku(); } else { if(!x_aiThinking) restartXiangqi(); }
+                if (currentGameType == 0) { if(!g_aiThinking) restartGomoku(true); } else { if(!x_aiThinking) restartXiangqi(true); }
                 return true;
             }
             if (checkClick(ex, ey, space*3+btnW*2, row1Y, space*3+btnW*3, row1Y+btnH)) {
