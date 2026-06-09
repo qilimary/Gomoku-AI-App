@@ -12,8 +12,8 @@ import android.view.MotionEvent;
 import android.view.View;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Random;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class MainActivity extends Activity {
     private GameView gameView;
@@ -48,6 +48,10 @@ public class MainActivity extends Activity {
         private final int[][] X_DIRS_BISHOP = {{-2,-2},{-2,2},{2,-2},{2,2}};
         private final int[][] X_DIRS_ADVISOR = {{-1,-1},{-1,1},{1,-1},{1,1}};
 
+        // ================= 置换表通用参数 =================
+        private static final int TT_SIZE = 1 << 18; // 262144 个槽位，足够且不爆内存
+        private static final int TT_MASK = TT_SIZE - 1;
+
         // ================= 五子棋 变量 =================
         private final int G_BOARD_SIZE = 15;
         private float g_cellSize, g_boardSize;
@@ -62,18 +66,19 @@ public class MainActivity extends Activity {
         private volatile int g_thinkingSec = 0;
         private long[][][] g_zobristTable = new long[G_BOARD_SIZE][G_BOARD_SIZE][3];
         private long g_zobristHash = 0;
-        private ConcurrentHashMap<Long, GTTEntry> g_ttTable = new ConcurrentHashMap<>();
         private int[][] g_posWeights = new int[G_BOARD_SIZE][G_BOARD_SIZE];
-        private ThreadLocal<int[]> g_tlLine = new ThreadLocal<int[]>() { @Override protected int[] initialValue() { return new int[9]; } };
+        private int[] g_tlLine = new int[9];
+
+        // 扁平化五子棋 TT 表
+        private long[] g_ttKeys = new long[TT_SIZE];
+        private int[] g_ttScores = new int[TT_SIZE];
+        private byte[] g_ttDepths = new byte[TT_SIZE];
+        private byte[] g_ttFlags = new byte[TT_SIZE];
+        private short[] g_ttBestMoves = new short[TT_SIZE]; // 高8位R，低8位C
 
         final int[][] G_LIVE_FOUR = {{0,1,1,1,1,0}};
         final int[][] G_DEAD_FOUR = {{1,1,1,1,0}, {0,1,1,1,1}, {1,0,1,1,1}, {1,1,0,1,1}, {1,1,1,0,1}};
         final int[][] G_LIVE_THREE = {{0,1,1,1,0,0}, {0,0,1,1,1,0}, {0,1,0,1,1,0}, {0,1,1,0,1,0}};
-
-        class GTTEntry {
-            int depth, score, flag, bestR, bestC;
-            GTTEntry(int d, int s, int f, int r, int c) { depth = d; score = s; flag = f; bestR = r; bestC = c; }
-        }
 
         // ================= 中国象棋 变量 =================
         private float x_cellSize, x_boardWidth, x_boardHeight;
@@ -92,23 +97,24 @@ public class MainActivity extends Activity {
         private long[][][] x_zobristTable = new long[10][9][14];
         private long[] x_zobristTurn = new long[2];
         private long x_zobristHash = 0;
-        private ConcurrentHashMap<Long, XTTEntry> x_ttTable = new ConcurrentHashMap<>();
         
-        private int[][] x_depthMoves = new int[30][150]; 
-        private ThreadLocal<int[]> x_tlMoves = new ThreadLocal<int[]>() { @Override protected int[] initialValue() { return new int[150]; } };
-        private ThreadLocal<int[]> x_tlCheckMoves = new ThreadLocal<int[]>() { @Override protected int[] initialValue() { return new int[150]; } };
-        
-        private int[] x_killerMoves = new int[30];
+        // 扁平化象棋 TT 表
+        private long[] x_ttKeys = new long[TT_SIZE];
+        private int[] x_ttScores = new int[TT_SIZE];
+        private byte[] x_ttDepths = new byte[TT_SIZE];
+        private byte[] x_ttFlags = new byte[TT_SIZE];
+        private int[] x_ttBestMoves = new int[TT_SIZE];
+
+        private int[][] x_depthMoves = new int[60][150]; 
+        private int[][] x_qDepthMoves = new int[60][150]; // 静止搜索专属层级数组
+        private int[] x_killerMoves = new int[60];
+        private int[][] x_historyTable = new int[14][90]; // 历史启发表
 
         class XMoveRecord {
             int sr, sc, er, ec; char captured;
             XMoveRecord(int sr, int sc, int er, int ec, char captured) {
                 this.sr=sr; this.sc=sc; this.er=er; this.ec=ec; this.captured=captured;
             }
-        }
-        class XTTEntry {
-            int depth, score, flag, bestMove; 
-            XTTEntry(int d, int s, int f, int bm) { depth=d; score=s; flag=f; bestMove=bm; }
         }
 
         private Runnable timerRunnable = new Runnable() {
@@ -220,13 +226,25 @@ public class MainActivity extends Activity {
         private void restartGomoku(boolean triggerAI) {
             g_board = new int[G_BOARD_SIZE][G_BOARD_SIZE];
             g_moveHistory.clear();
-            g_lastMoveHighlight = null; g_zobristHash = 0; g_ttTable.clear();
+            g_lastMoveHighlight = null; g_zobristHash = 0; 
+            Arrays.fill(g_ttKeys, 0L); // 清空置换表
             g_aiThinking = false; keepThinking = false; g_gameOver = false;
             g_currentPlayer = 1;
             if (g_gameMode == 0 && triggerAI) g_humanColor = rand.nextBoolean() ? 1 : 2;
             syncGomokuBoard(); updateStatusMsg(); invalidate();
             if (triggerAI && g_gameMode == 0 && g_humanColor == 2 && currentGameType == 0) triggerGomokuAiMove();
         }
+
+        // 位操作打包机制，避免对象分配
+        private long packGomokuResult(int r, int c, int score) {
+            long sr = r & 0xFFL;
+            long sc = c & 0xFFL;
+            long ss = score & 0xFFFFFFFFL; // 截断或转换到32位无符号
+            return (ss << 16) | (sr << 8) | sc;
+        }
+        private int unpackScoreG(long res) { return (int)(res >> 16); }
+        private int unpackRowG(long res) { return (int)((res >> 8) & 0xFF); }
+        private int unpackColG(long res) { return (int)(res & 0xFF); }
 
         private boolean g_isForbiddenMove(int[][] b, int r, int c, int p) {
             int original = b[r][c]; b[r][c] = p;
@@ -249,7 +267,7 @@ public class MainActivity extends Activity {
         }
 
         private int[] g_extractLine(int[][] b, int r, int c, int[] d) {
-            int[] line = g_tlLine.get();
+            int[] line = g_tlLine;
             for (int i=-4; i<=4; i++) {
                 int nr = r + d[0]*i, nc = c + d[1]*i;
                 line[i+4] = (nr>=0 && nr<G_BOARD_SIZE && nc>=0 && nc<G_BOARD_SIZE) ? b[nr][nc] : -1;
@@ -347,44 +365,64 @@ public class MainActivity extends Activity {
             int[] best = {-1, -1}; int aiColor = 3 - g_humanColor;
             for (int d=1; d<=maxDepth; d++) {
                 if (!keepThinking) break;
-                int[] res = g_alphaBeta(d, Integer.MIN_VALUE+1, Integer.MAX_VALUE-1, aiColor);
-                if (res[0] != -1) { best[0]=res[res.length-3]; best[1]=res[res.length-2]; if (res[res.length-1]>=900000) break; }
+                long res = g_alphaBeta(d, Integer.MIN_VALUE+1, Integer.MAX_VALUE-1, aiColor);
+                int r = unpackRowG(res), c = unpackColG(res), score = unpackScoreG(res);
+                if (r != -1) { best[0]=r; best[1]=c; if (score >= 900000) break; }
             }
             return best;
         }
 
-        private int[] g_alphaBeta(int depth, int alpha, int beta, int player) {
-            if (depth == 0) return new int[]{-1, -1, g_evaluateBoard()};
+        // 修改为返回 long, 并加入 PVS 搜索
+        private long g_alphaBeta(int depth, int alpha, int beta, int player) {
+            if (depth == 0) return packGomokuResult(-1, -1, g_evaluateBoard());
             int aiColor = 3 - g_humanColor;
             long hashKey = g_zobristHash ^ (player==aiColor ? 0xFAFBFCFDL : 0L);
-            GTTEntry entry = g_ttTable.get(hashKey);
+            int ttIdx = (int)(hashKey & TT_MASK);
             
             int ttR = -1, ttC = -1;
-            // 【重大修正】：将提取置换表最佳走法的逻辑移到外侧。
-            // 只要节点有缓存记录，无论缓存深浅，其记录的 bestR/bestC 都是绝佳的第一演练选择。
-            if (entry != null) {
-                ttR = entry.bestR; 
-                ttC = entry.bestC;
-                if (entry.depth >= depth) {
-                    if (entry.flag == 0) return new int[]{entry.bestR, entry.bestC, entry.score};
-                    if (entry.flag == 1 && entry.score > alpha) alpha = entry.score;
-                    if (entry.flag == 2 && entry.score < beta) beta = entry.score;
-                    if (alpha >= beta) return new int[]{entry.bestR, entry.bestC, entry.score};
+            if (g_ttKeys[ttIdx] == hashKey) {
+                ttR = (g_ttBestMoves[ttIdx] >> 8) & 0xFF;
+                ttC = g_ttBestMoves[ttIdx] & 0xFF;
+                if (g_ttDepths[ttIdx] >= depth) {
+                    int flag = g_ttFlags[ttIdx];
+                    int score = g_ttScores[ttIdx];
+                    if (flag == 0) return packGomokuResult(ttR, ttC, score);
+                    if (flag == 1 && score > alpha) alpha = score;
+                    if (flag == 2 && score < beta) beta = score;
+                    if (alpha >= beta) return packGomokuResult(ttR, ttC, score);
                 }
             }
 
             int[] moves = g_genMoves(ttR, ttC, aiColor);
-            if (moves.length == 0) return new int[]{-1, -1, 0};
+            if (moves.length == 0) return packGomokuResult(-1, -1, 0);
 
             int bestR = -1, bestC = -1, max = Integer.MIN_VALUE+1, min = Integer.MAX_VALUE-1, origAlpha = alpha;
-            for (int m : moves) {
+            
+            for (int i=0; i<moves.length; i++) {
                 if (!keepThinking) break;
+                int m = moves[i];
                 int r = (m >> 8) & 0xFF;
                 int c = m & 0xFF;
 
                 g_board[r][c] = player; g_zobristHash ^= g_zobristTable[r][c][player];
-                int score = g_checkWin(g_board, r, c, player) ? ((player==aiColor) ? 1000000+depth : -1000000-depth) 
-                                                              : g_alphaBeta(depth-1, alpha, beta, 3-player)[2];
+                int score;
+                
+                if (g_checkWin(g_board, r, c, player)) {
+                    score = (player==aiColor) ? 1000000+depth : -1000000-depth;
+                } else {
+                    // PVS 主变搜索逻辑
+                    if (i == 0) {
+                        score = unpackScoreG(g_alphaBeta(depth-1, alpha, beta, 3-player));
+                    } else {
+                        if (player == aiColor) {
+                            score = unpackScoreG(g_alphaBeta(depth-1, alpha, alpha+1, 3-player)); // 零窗口探测
+                            if (score > alpha && score < beta) score = unpackScoreG(g_alphaBeta(depth-1, alpha, beta, 3-player)); // 失败后重搜
+                        } else {
+                            score = unpackScoreG(g_alphaBeta(depth-1, beta-1, beta, 3-player));
+                            if (score > alpha && score < beta) score = unpackScoreG(g_alphaBeta(depth-1, alpha, beta, 3-player));
+                        }
+                    }
+                }
                 g_zobristHash ^= g_zobristTable[r][c][player]; g_board[r][c] = 0;
 
                 if (player == aiColor) {
@@ -396,11 +434,16 @@ public class MainActivity extends Activity {
                 }
             }
             int fScore = (player == aiColor) ? max : min;
-            int flag = (fScore <= origAlpha) ? 2 : (fScore >= beta ? 1 : 0);
+            byte flag = (byte)((fScore <= origAlpha) ? 2 : (fScore >= beta ? 1 : 0));
+            
             if (bestR != -1 && keepThinking) {
-                g_ttTable.put(hashKey, new GTTEntry(depth, fScore, flag, bestR, bestC));
+                g_ttKeys[ttIdx] = hashKey;
+                g_ttDepths[ttIdx] = (byte)depth;
+                g_ttScores[ttIdx] = fScore;
+                g_ttFlags[ttIdx] = flag;
+                g_ttBestMoves[ttIdx] = (short)((bestR << 8) | bestC);
             }
-            return new int[]{bestR, bestC, fScore};
+            return packGomokuResult(bestR, bestC, fScore);
         }
 
         private boolean g_hasNeighbor(int[][] b, int r, int c, int dist) {
@@ -423,10 +466,8 @@ public class MainActivity extends Activity {
                     }
                 }
             }
-            // 【修正】：修复判断空盘的逻辑，防止第0行落子引发的异常判定
             if (g_moveHistory.isEmpty()) { return new int[]{(100000 << 16) | (7 << 8) | 7}; } 
             
-            // 【优化】：搜索区域剪裁半径从 3 缩减到 2，不丢失任意活三/死四关键位，大幅减少无效空位。
             minR = Math.max(0, minR-2); maxR = Math.min(G_BOARD_SIZE-1, maxR+2);
             minC = Math.max(0, minC-2); maxC = Math.min(G_BOARD_SIZE-1, maxC+2);
 
@@ -437,7 +478,6 @@ public class MainActivity extends Activity {
 
             for (int r=minR; r<=maxR; r++) {
                 for (int c=minC; c<=maxC; c++) {
-                    // 【优化】：邻域检测半径从 3 缩减到 2
                     if (g_board[r][c]==0 && g_hasNeighbor(g_board,r,c,2) && (r!=pvR||c!=pvC)) {
                         int s = g_localScore(g_board,r,c,aiColor)+g_localScore(g_board,r,c,hC);
                         list[size++] = (s << 16) | (r << 8) | c;
@@ -541,8 +581,11 @@ public class MainActivity extends Activity {
 
             x_moveHistory.clear(); x_selectedPos = null; x_aiLastMove = null; x_validMovesDisplay.clear();
             x_isRedTurn = true; x_aiThinking = false; keepThinking = false; x_gameOver = false;
-            x_ttTable.clear(); 
-            for(int i=0; i<30; i++) x_killerMoves[i] = -1; 
+            
+            Arrays.fill(x_ttKeys, 0L);
+            for(int i=0; i<60; i++) x_killerMoves[i] = -1; 
+            for(int i=0; i<14; i++) Arrays.fill(x_historyTable[i], 0);
+
             syncXiangqiBoard(); updateStatusMsg(); invalidate();
             if (triggerAI && x_gameMode == 0 && !x_isRedTurn) triggerXiangqiAiMove();
         }
@@ -554,6 +597,19 @@ public class MainActivity extends Activity {
         private int getPieceIndex(char p) {
             String map = "rnbakcpRNBAKCP"; int idx = map.indexOf(p);
             return idx >= 0 ? idx : 0;
+        }
+
+        private int x_pieceValue(char p) {
+            switch(Character.toLowerCase(p)) {
+                case 'k': return 10000;
+                case 'r': return 900;
+                case 'c': return 450;
+                case 'n': return 400;
+                case 'b': return 200;
+                case 'a': return 200;
+                case 'p': return 100;
+                default: return 0;
+            }
         }
 
         private boolean x_isRed(char p) { return p >= 'A' && p <= 'Z'; }
@@ -708,7 +764,7 @@ public class MainActivity extends Activity {
         }
 
         private boolean x_checkGameOver(char[][] b, boolean isRed) {
-            int[] moves = x_tlMoves.get();
+            int[] moves = x_depthMoves[0];
             for (int r=0; r<10; r++) {
                 for (int c=0; c<9; c++) {
                     if (b[r][c]!='.' && x_isRed(b[r][c])==isRed) {
@@ -786,7 +842,7 @@ public class MainActivity extends Activity {
                         if (!keepThinking) { x_statusMsg = "思考已中断"; x_undoMove(); return; }
                         
                         if (best != -1) {
-                            int sr=best>>12, sc=(best>>8)&0xF, er=(best>>4)&0xF, ec=best&0xF;
+                            int sr=(best>>12)&0xF, sc=(best>>8)&0xF, er=(best>>4)&0xF, ec=best&0xF;
                             x_makeMove(sr, sc, er, ec);
                             if (x_checkGameOver(x_board, x_isRedTurn)) { x_statusMsg = "绝杀！"+(x_isRedTurn?"黑":"红")+"方胜利！"; x_gameOver = true; }
                             else updateStatusMsg();
@@ -804,13 +860,86 @@ public class MainActivity extends Activity {
                 long hashKey = x_zobristHash ^ x_zobristTurn[x_isRedTurn?0:1];
                 int res = x_alphaBeta(d, Integer.MIN_VALUE+1, Integer.MAX_VALUE-1, x_isRedTurn, hashKey, false);
                 if (!keepThinking) break;
-                XTTEntry en = x_ttTable.get(hashKey);
-                if (en != null && en.depth == d && en.bestMove != -1) {
-                    bestMove = en.bestMove; 
+                int ttIdx = (int)(hashKey & TT_MASK);
+                if (x_ttKeys[ttIdx] == hashKey && x_ttDepths[ttIdx] == d && x_ttBestMoves[ttIdx] != -1) {
+                    bestMove = x_ttBestMoves[ttIdx]; 
                     if (res > 90000) break;
                 }
             }
             return new int[]{bestMove};
+        }
+        
+        // ================= 新增：象棋静止搜索 =================
+        private int x_quiesce(int alpha, int beta, boolean isMax, int qDepth) {
+            boolean inCheck = x_isInCheck(x_board, isMax);
+            
+            // 只有在未被将军时，才用静态评估做截断
+            if (!inCheck) {
+                int standPat = x_evalBoard(x_board);
+                if (isMax) {
+                    if (standPat >= beta) return beta;
+                    if (alpha < standPat) alpha = standPat;
+                } else {
+                    if (standPat <= alpha) return alpha;
+                    if (beta > standPat) beta = standPat;
+                }
+            }
+
+            if (qDepth >= 59) return x_evalBoard(x_board);
+
+            int[] allMoves = x_qDepthMoves[qDepth];
+            int moveCount = 0;
+            for (int r=0; r<10; r++) {
+                for (int c=0; c<9; c++) {
+                    if (x_board[r][c]!='.' && x_isRed(x_board[r][c])==isMax) {
+                        int[] tempMoves = x_depthMoves[59]; // 借用最深层数组做临时生成
+                        int n = x_genValidMoves(x_board, r, c, tempMoves);
+                        for (int i=0; i<n; i++) {
+                            int m = tempMoves[i];
+                            int er = (m>>4)&0xF, ec = m&0xF;
+                            // 如果被将军，必须搜索所有走法寻找解将；否则只搜索吃子走法
+                            if (inCheck || x_board[er][ec] != '.') {
+                                int score = 10000 + x_pieceValue(x_board[er][ec]) - x_pieceValue(x_board[r][c])/10;
+                                allMoves[moveCount++] = (score << 16) | m;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (moveCount == 0) {
+                if (inCheck) return isMax ? -100000 : 100000; // 被将死，返回极值
+                return x_evalBoard(x_board); // 没被将但无吃子走法
+            }
+
+            // 简单降序排序 (MVV-LVA)
+            for (int i=1; i<moveCount; i++) {
+                int key = allMoves[i]; int j = i - 1;
+                while (j >= 0 && (allMoves[j] >>> 16) < (key >>> 16)) { allMoves[j+1] = allMoves[j]; j--; }
+                allMoves[j+1] = key;
+            }
+
+            for (int i=0; i<moveCount; i++) {
+                int m = allMoves[i] & 0xFFFF;
+                if (!x_isLegalMove(x_board, m, isMax)) continue;
+
+                int sr=m>>12, sc=(m>>8)&0xF, er=(m>>4)&0xF, ec=m&0xF;
+                char cap = x_board[er][ec];
+                x_board[er][ec] = x_board[sr][sc]; x_board[sr][sc] = '.';
+
+                int val = x_quiesce(alpha, beta, !isMax, qDepth + 1);
+
+                x_board[sr][sc] = x_board[er][ec]; x_board[er][ec] = cap;
+
+                if (isMax) {
+                    if (val > alpha) alpha = val;
+                    if (alpha >= beta) return beta;
+                } else {
+                    if (val < beta) beta = val;
+                    if (alpha >= beta) return alpha;
+                }
+            }
+            return isMax ? alpha : beta;
         }
 
         private int x_alphaBeta(int depth, int alpha, int beta, boolean isMax, long hash, boolean isNull) {
@@ -819,10 +948,9 @@ public class MainActivity extends Activity {
             boolean inCheck = x_isInCheck(x_board, isMax);
             if (inCheck) depth++;
             
+            // 深度到0，进入静止搜索
             if (depth <= 0) {
-                if (isMax && x_isInCheck(x_board, false)) return 100000;
-                if (!isMax && x_isInCheck(x_board, true)) return -100000;
-                return x_evalBoard(x_board);
+                return x_quiesce(alpha, beta, isMax, 0); 
             }
 
             if (!isNull && depth >= 3 && !inCheck) {
@@ -832,16 +960,18 @@ public class MainActivity extends Activity {
                 if (!isMax && val <= alpha) return alpha;
             }
 
-            XTTEntry entry = x_ttTable.get(hash);
-            if (entry != null && entry.depth >= depth) {
-                if (entry.flag == 0) return entry.score;
-                if (entry.flag == 1 && entry.score > alpha) alpha = entry.score;
-                if (entry.flag == 2 && entry.score < beta) beta = entry.score;
-                if (alpha >= beta) return entry.score;
+            int ttIdx = (int)(hash & TT_MASK);
+            if (x_ttKeys[ttIdx] == hash && x_ttDepths[ttIdx] >= depth) {
+                byte flag = x_ttFlags[ttIdx];
+                int score = x_ttScores[ttIdx];
+                if (flag == 0) return score;
+                if (flag == 1 && score > alpha) alpha = score;
+                if (flag == 2 && score < beta) beta = score;
+                if (alpha >= beta) return score;
             }
 
             int[] allMoves = x_depthMoves[depth]; int moveCount = 0;
-            int[] genMoves = x_tlMoves.get(); 
+            int[] genMoves = x_depthMoves[59]; // 借用最深层做临时缓存
             for (int r=0; r<10; r++) {
                 for (int c=0; c<9; c++) {
                     if (x_board[r][c]!='.' && x_isRed(x_board[r][c])==isMax) {
@@ -852,31 +982,30 @@ public class MainActivity extends Activity {
             }
             if (moveCount == 0) return isMax ? -100000 : 100000;
 
-            int captureCount = 0;
-            for (int i=0; i<moveCount; i++) {
-                int m = allMoves[i], er = (m>>4)&0xF, ec = m&0xF;
+            // 启发式打分：包含 MVV-LVA 与历史表
+            for(int i=0; i<moveCount; i++) {
+                int m = allMoves[i];
+                int sr=m>>12, sc=(m>>8)&0xF, er=(m>>4)&0xF, ec=m&0xF;
+                int score = 0;
                 if (x_board[er][ec] != '.') {
-                    int temp = allMoves[captureCount];
-                    allMoves[captureCount] = m;
-                    allMoves[i] = temp;
-                    captureCount++;
+                    score = 10000 + x_pieceValue(x_board[er][ec]) - x_pieceValue(x_board[sr][sc])/10;
+                } else {
+                    if (m == x_killerMoves[depth]) score = 9000;
+                    else score = x_historyTable[getPieceIndex(x_board[sr][sc])][er*9+ec];
                 }
+                allMoves[i] = (score << 16) | m; // 高位装载分数进行极速排序
             }
-            if (x_killerMoves[depth] != -1) {
-                for (int i=captureCount; i<moveCount; i++) {
-                    if (allMoves[i] == x_killerMoves[depth]) {
-                        int temp = allMoves[captureCount];
-                        allMoves[captureCount] = allMoves[i];
-                        allMoves[i] = temp;
-                        break;
-                    }
-                }
+
+            for (int i=1; i<moveCount; i++) {
+                int key = allMoves[i]; int j = i - 1;
+                while (j >= 0 && (allMoves[j] >>> 16) < (key >>> 16)) { allMoves[j+1] = allMoves[j]; j--; }
+                allMoves[j+1] = key;
             }
 
             int bestVal = isMax ? Integer.MIN_VALUE+1 : Integer.MAX_VALUE-1, flag = 0, bestM = -1, origA = alpha;
             for (int i=0; i<moveCount; i++) {
                 if (!keepThinking) break;
-                int m = allMoves[i];
+                int m = allMoves[i] & 0xFFFF; // 拆包提取原生走法
                 if (!x_isLegalMove(x_board, m, isMax)) continue;
 
                 int sr=m>>12, sc=(m>>8)&0xF, er=(m>>4)&0xF, ec=m&0xF;
@@ -885,7 +1014,20 @@ public class MainActivity extends Activity {
                 long nextHash = hash ^ x_zobristTable[sr][sc][getPieceIndex(x_board[er][ec])] ^ x_zobristTable[er][ec][getPieceIndex(x_board[er][ec])] ^ x_zobristTurn[0]^x_zobristTurn[1];
                 if (cap!='.') nextHash ^= x_zobristTable[er][ec][getPieceIndex(cap)];
 
-                int val = x_alphaBeta(depth-1, alpha, beta, !isMax, nextHash, false);
+                int val;
+                // PVS 象棋主变搜索
+                if (i == 0) {
+                    val = x_alphaBeta(depth-1, alpha, beta, !isMax, nextHash, false);
+                } else {
+                    if (isMax) {
+                        val = x_alphaBeta(depth-1, alpha, alpha+1, !isMax, nextHash, false);
+                        if (val > alpha && val < beta) val = x_alphaBeta(depth-1, alpha, beta, !isMax, nextHash, false);
+                    } else {
+                        val = x_alphaBeta(depth-1, beta-1, beta, !isMax, nextHash, false);
+                        if (val > alpha && val < beta) val = x_alphaBeta(depth-1, alpha, beta, !isMax, nextHash, false);
+                    }
+                }
+
                 x_board[sr][sc] = x_board[er][ec]; x_board[er][ec] = cap;
 
                 if (isMax) {
@@ -898,8 +1040,14 @@ public class MainActivity extends Activity {
             }
 
             if (keepThinking && bestM != -1) {
-                x_ttTable.put(hash, new XTTEntry(depth, bestVal, flag, bestM));
-                if (flag != 0 && depth < 30) x_killerMoves[depth] = bestM; 
+                x_ttKeys[ttIdx] = hash; x_ttDepths[ttIdx] = (byte)depth;
+                x_ttScores[ttIdx] = bestVal; x_ttFlags[ttIdx] = (byte)flag;
+                x_ttBestMoves[ttIdx] = bestM;
+                if (flag != 0 && depth < 60) {
+                    x_killerMoves[depth] = bestM; 
+                    int er = (bestM>>4)&0xF, ec = bestM&0xF;
+                    if(x_board[er][ec] == '.') x_historyTable[getPieceIndex(x_board[bestM>>12][(bestM>>8)&0xF])][er*9+ec] += depth * depth;
+                }
             }
             return bestVal;
         }
@@ -1173,7 +1321,7 @@ public class MainActivity extends Activity {
                 if (checkClick(ex, ey, space*3+btnW*2, row2Y, space*3+btnW*3, row2Y+btnH)) { setDepth(d3); return true; }
 
                 if (checkClick(ex, ey, space, row3Y, space+btnW, row3Y+btnH)) { int d=getDepth(); if(d>1) setDepth(d-1); return true; }
-                if (checkClick(ex, ey, w-space-btnW, row3Y, w-space, row3Y+btnH)) { int d=getDepth(); if(d<20) setDepth(d+1); return true; }
+                if (checkClick(ex, ey, w-space-btnW, row3Y, w-space, row3Y+btnH)) { int d=getDepth(); if(d<60) setDepth(d+1); return true; }
             }
 
             float switchBtnW = w * 0.5f, switchBtnH = w * 0.11f;
@@ -1232,14 +1380,14 @@ public class MainActivity extends Activity {
                         } else {
                             if (x_board[r][c]!='.' && x_isRed(x_board[r][c])==x_isRedTurn) {
                                 x_selectedPos = new int[]{r,c}; x_validMovesDisplay.clear();
-                                int[] moves = x_tlMoves.get(); int cnt = x_genValidMoves(x_board, r, c, moves);
+                                int[] moves = x_depthMoves[59]; int cnt = x_genValidMoves(x_board, r, c, moves);
                                 for (int i=0; i<cnt; i++) x_validMovesDisplay.add(moves[i]);
                             } else { x_selectedPos = null; x_validMovesDisplay.clear(); }
                         }
                     } else {
                         if (x_board[r][c]!='.' && x_isRed(x_board[r][c])==x_isRedTurn) {
                             x_selectedPos = new int[]{r,c}; x_validMovesDisplay.clear();
-                            int[] moves = x_tlMoves.get(); int cnt = x_genValidMoves(x_board, r, c, moves);
+                            int[] moves = x_depthMoves[59]; int cnt = x_genValidMoves(x_board, r, c, moves);
                             for (int i=0; i<cnt; i++) x_validMovesDisplay.add(moves[i]);
                         }
                     }
