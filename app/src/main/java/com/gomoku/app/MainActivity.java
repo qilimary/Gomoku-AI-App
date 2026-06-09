@@ -28,29 +28,30 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         if (gameView != null) {
-            gameView.saveGameState(); // 完美解决切后台重置与自动下棋问题
+            gameView.saveGameState(); // 保存进度
         }
     }
 
     class GomokuView extends View {
         private final int BOARD_SIZE = 15;
         private int[][] board = new int[BOARD_SIZE][BOARD_SIZE];
+        
+        // 双缓冲技术：引入专门用于显示的 UI 棋盘，彻底避免 AI 思考时画面疯狂撕裂和闪烁
+        private int[][] displayBoard = new int[BOARD_SIZE][BOARD_SIZE];
+        
         private ArrayList<int[]> moveHistory = new ArrayList<>();
         private int[] lastMoveHighlight = null;
         
-        // 游戏状态控制
-        private int gameMode = 0; // 0: 人机对战, 1: 双人对战
-        private int humanColor = 1; // 人机模式下，玩家是黑(1)还是白(2)
-        private int currentPlayer = 1; // 当前下棋者 (1:黑, 2:白)
+        private int gameMode = 0; 
+        private int humanColor = 1; 
+        private int currentPlayer = 1; 
         private int aiDifficultyDepth = 6;
-        private boolean aiThinking = false;
-        private boolean gameOver = false;
+        private volatile boolean aiThinking = false;
+        private volatile boolean gameOver = false;
         private String statusMessage = "";
 
-        // UI 坐标参数缓存
         private float w, margin, boardSize, cellSize, startX, startY;
 
-        // 终极优化数据结构
         private long[][][] zobristTable = new long[BOARD_SIZE][BOARD_SIZE][3];
         private long currentZobristHash = 0;
         private HashMap<Long, TTEntry> transpositionTable = new HashMap<>();
@@ -69,7 +70,7 @@ public class MainActivity extends Activity {
         public GomokuView(Context context) {
             super(context);
             initEngine();
-            loadGameState(); // 初始化时先尝试恢复上一局
+            loadGameState(); 
         }
 
         private void initEngine() {
@@ -87,7 +88,13 @@ public class MainActivity extends Activity {
             }
         }
 
-        // --- 核心生命周期：存档与读档 ---
+        // 同步后台棋盘到前台 UI 棋盘
+        private void syncBoard() {
+            for (int i = 0; i < BOARD_SIZE; i++) {
+                System.arraycopy(board[i], 0, displayBoard[i], 0, BOARD_SIZE);
+            }
+        }
+
         public void saveGameState() {
             SharedPreferences prefs = getContext().getSharedPreferences("GomokuSave", Context.MODE_PRIVATE);
             SharedPreferences.Editor editor = prefs.edit();
@@ -107,11 +114,11 @@ public class MainActivity extends Activity {
 
         private void loadGameState() {
             SharedPreferences prefs = getContext().getSharedPreferences("GomokuSave", Context.MODE_PRIVATE);
-            aiDifficultyDepth = prefs.getInt("aiDifficultyDepth", 6); // 默认普通难度
+            aiDifficultyDepth = prefs.getInt("aiDifficultyDepth", 6); 
             String history = prefs.getString("moveHistory", "");
 
             if (history.isEmpty()) {
-                restartGame(); // 如果没有存档则开新局
+                restartGame(); 
             } else {
                 gameMode = prefs.getInt("gameMode", 0);
                 humanColor = prefs.getInt("humanColor", 1);
@@ -134,10 +141,11 @@ public class MainActivity extends Activity {
                     currentZobristHash ^= zobristTable[r][c][p];
                     lastMoveHighlight = new int[]{r, c};
                 }
+                syncBoard();
                 updateStatusMsg();
                 
-                // 如果读档时恰好轮到AI（非人为中断），则继续思考
-                if (!gameOver && gameMode == 0 && currentPlayer != humanColor && !aiThinking) {
+                aiThinking = false;
+                if (!gameOver && gameMode == 0 && currentPlayer != humanColor) {
                     triggerAiMove();
                 }
             }
@@ -152,16 +160,15 @@ public class MainActivity extends Activity {
             aiThinking = false;
             gameOver = false;
             
-            // 随机先手逻辑：决定谁执黑(1)
-            currentPlayer = 1; // 开局永远是黑棋先走
+            currentPlayer = 1; 
             if (gameMode == 0) {
-                humanColor = rand.nextBoolean() ? 1 : 2; // 玩家随机分配黑白
+                humanColor = rand.nextBoolean() ? 1 : 2; 
             }
 
+            syncBoard();
             updateStatusMsg();
             invalidate();
             
-            // 人机模式且AI执黑时，AI先动
             if (gameMode == 0 && humanColor == 2) triggerAiMove();
         }
 
@@ -178,27 +185,32 @@ public class MainActivity extends Activity {
             }
         }
 
-        // ======================== 核心算法 ========================
+        // ======================== 修复后完美的核心算法 ========================
 
         private boolean isForbiddenMove(int[][] b, int r, int c, int p) {
+            if (p == 2) return false; // 白棋没有禁手规则，直接放行
+            int original = b[r][c];
             b[r][c] = p;
-            if (checkWin(r, c, p)) { b[r][c] = 0; return false; }
+            if (checkWin(b, r, c, p)) { b[r][c] = original; return false; }
             int fours = 0, liveThrees = 0;
             int[][] dirs = {{1,0}, {0,1}, {1,1}, {1,-1}};
             for (int[] d : dirs) {
                 int[] line = extractLine(b, r, c, d);
-                if (countContinuous(line, 4, p) >= 6) { b[r][c] = 0; return true; } // 长连禁手
+                if (countContinuous(line, 4, p) >= 6) { b[r][c] = original; return true; } // 黑棋长连判定禁手
                 if (checkFourPattern(line, p)) fours++;
                 if (checkLiveThreePattern(line, p)) liveThrees++;
             }
-            b[r][c] = 0;
+            b[r][c] = original;
             return fours >= 2 || liveThrees >= 2;
         }
 
+        // 彻底修复引发死循环和漏判的神级 Bug
         private int countContinuous(int[] line, int center, int p) {
             int count = 1;
+            // 向右延伸
             for (int i = center + 1; i < line.length && line[i] == p; i++) count++;
-            for (int i = center - 1; i >= 0 && line[i] == p; i++) count--;
+            // 向左延伸 (注意：此处必须是 i--)
+            for (int i = center - 1; i >= 0 && line[i] == p; i--) count++;
             return count;
         }
 
@@ -233,17 +245,25 @@ public class MainActivity extends Activity {
             return line;
         }
 
+        // 修复了抹除棋盘盘面导致棋子丢失的核心 Bug
         private int localScore(int[][] b, int r, int c, int p) {
             int score = 0, fours = 0, liveThrees = 0;
             int[][] dirs = {{1,0}, {0,1}, {1,1}, {1,-1}};
+            int original = b[r][c]; // 记住原本是什么，以防止把真实棋局清空
             b[r][c] = p;
+            
             for (int[] d : dirs) {
                 int[] line = extractLine(b, r, c, d);
-                if (countContinuous(line, 4, p) >= 5) { b[r][c] = 0; return 1000000; }
+                int consecutive = countContinuous(line, 4, p);
+                // 黑棋五连满分，白棋五连及以上满分
+                if (p == 1 && consecutive == 5) { b[r][c] = original; return 1000000; }
+                if (p == 2 && consecutive >= 5) { b[r][c] = original; return 1000000; }
+                
                 if (checkFourPattern(line, p)) { fours++; score += 2000; } 
                 else if (checkLiveThreePattern(line, p)) { liveThrees++; score += 2000; }
             }
-            b[r][c] = 0;
+            b[r][c] = original; // 绝对归还！
+            
             if (fours >= 2) score += 90000;
             else if (fours >= 1 && liveThrees >= 1) score += 80000;
             else if (liveThrees >= 2) score += 70000;
@@ -259,11 +279,11 @@ public class MainActivity extends Activity {
                 post(() -> {
                     if (bestMove != null && bestMove[0] != -1 && !gameOver) {
                         makeMove(bestMove[0], bestMove[1], currentPlayer);
-                        if (checkWin(bestMove[0], bestMove[1], currentPlayer)) {
+                        if (checkWin(board, bestMove[0], bestMove[1], currentPlayer)) {
                             statusMessage = "AI 胜利！";
                             gameOver = true;
                         } else {
-                            currentPlayer = humanColor; // 换回玩家
+                            currentPlayer = humanColor; 
                             updateStatusMsg();
                         }
                     }
@@ -316,7 +336,7 @@ public class MainActivity extends Activity {
                 currentZobristHash ^= zobristTable[r][c][player];
 
                 int score;
-                if (checkWin(r, c, player)) score = (player == aiColor) ? 1000000 + depth : -1000000 - depth;
+                if (checkWin(board, r, c, player)) score = (player == aiColor) ? 1000000 + depth : -1000000 - depth;
                 else score = alphaBeta(depth - 1, alpha, beta, 3 - player)[2];
 
                 currentZobristHash ^= zobristTable[r][c][player];
@@ -349,7 +369,7 @@ public class MainActivity extends Activity {
             boolean[][] visited = new boolean[BOARD_SIZE][BOARD_SIZE];
             int hColor = 3 - aiColor;
 
-            if (pvR >= 0 && pvC >= 0 && board[pvR][pvC] == 0) {
+            if (pvR >= 0 && pvR < BOARD_SIZE && pvC >= 0 && pvC < BOARD_SIZE && board[pvR][pvC] == 0) {
                 list.add(new int[]{pvR, pvC, localScore(board, pvR, pvC, aiColor) + localScore(board, pvR, pvC, hColor) + 100000});
                 visited[pvR][pvC] = true;
             }
@@ -390,83 +410,72 @@ public class MainActivity extends Activity {
             return totalScore;
         }
 
-        private boolean checkWin(int r, int c, int p) {
+        // 完美五子棋判定规则：黑棋赢必须恰好 5 子，白棋赢 >= 5 子
+        private boolean checkWin(int[][] b, int r, int c, int p) {
             int[][] dirs = {{1,0}, {0,1}, {1,1}, {1,-1}};
             for (int[] d : dirs) {
                 int count = 1;
                 for (int step : new int[]{1, -1}) {
-                    for (int i = 1; i < 5; i++) {
+                    for (int i = 1; i < 9; i++) {
                         int nr = r + d[0]*step*i, nc = c + d[1]*step*i;
-                        if (nr>=0 && nr<BOARD_SIZE && nc>=0 && nc<BOARD_SIZE && board[nr][nc] == p) count++; else break;
+                        if (nr>=0 && nr<BOARD_SIZE && nc>=0 && nc<BOARD_SIZE && b[nr][nc] == p) count++; else break;
                     }
                 }
-                if (count >= 5) return true;
+                if (p == 1 && count == 5) return true;
+                if (p == 2 && count >= 5) return true;
             }
             return false;
         }
 
-        // ======================== 全新极简自适应 UI ========================
+        // ======================== UI ========================
 
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             
-            // 动态响应屏幕尺寸
             w = getWidth();
             margin = w * 0.06f; 
             boardSize = w - 2 * margin;
             cellSize = boardSize / 14f;
             startX = margin;
-            startY = margin + w * 0.25f; // 顶部留白放按钮
+            startY = margin + w * 0.25f; 
 
-            canvas.drawColor(Color.WHITE); // 纯白极简底色
+            canvas.drawColor(Color.WHITE); 
             drawUI(canvas);
             drawGrid(canvas);
         }
 
         private void drawGrid(Canvas canvas) {
             paint.setColor(Color.BLACK);
-            
-            // 修复点：一定要设置成“描边（STROKE）”模式，否则会画一个实心大黑方块
             paint.setStyle(Paint.Style.STROKE); 
-            paint.setStrokeWidth(5f); // 稍微加粗外边框
-            
-            // 绘制外边框
+            paint.setStrokeWidth(5f); 
             canvas.drawRect(startX, startY, startX + boardSize, startY + boardSize, paint);
             
-            // 绘制网格
             paint.setStrokeWidth(2f);
             for (int i = 1; i < 14; i++) {
                 canvas.drawLine(startX, startY + i * cellSize, startX + boardSize, startY + i * cellSize, paint);
                 canvas.drawLine(startX + i * cellSize, startY, startX + i * cellSize, startY + boardSize, paint);
             }
 
-            // 恢复“填充（FILL）”模式绘制星位和棋子
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(Color.BLACK);
-            
-            // 绘制天元和星位
             int[] stars = {3, 7, 11};
             for (int r : stars) {
-                for (int c : stars) {
-                    canvas.drawCircle(startX + c * cellSize, startY + r * cellSize, cellSize * 0.15f, paint);
-                }
+                for (int c : stars) canvas.drawCircle(startX + c * cellSize, startY + r * cellSize, cellSize * 0.15f, paint);
             }
 
-            // 绘制真实落子
+            // 彻底解决撕裂：前端绘画只认准专门的 UI 防闪烁双缓冲棋盘
             for (int r = 0; r < BOARD_SIZE; r++) {
                 for (int c = 0; c < BOARD_SIZE; c++) {
-                    if (board[r][c] != 0) {
+                    if (displayBoard[r][c] != 0) {
                         float cx = startX + c * cellSize;
                         float cy = startY + r * cellSize;
                         
-                        // 黑白棋风格
-                        paint.setColor(board[r][c] == 1 ? Color.BLACK : Color.WHITE);
+                        paint.setColor(displayBoard[r][c] == 1 ? Color.BLACK : Color.WHITE);
                         paint.setStyle(Paint.Style.FILL);
                         canvas.drawCircle(cx, cy, cellSize * 0.42f, paint);
                         
-                        // 给白棋加一圈黑色描边防止看不见
-                        if (board[r][c] == 2) {
+                        if (displayBoard[r][c] == 2) {
                             paint.setColor(Color.BLACK);
                             paint.setStyle(Paint.Style.STROKE);
                             paint.setStrokeWidth(2f);
@@ -474,7 +483,6 @@ public class MainActivity extends Activity {
                             paint.setStyle(Paint.Style.FILL);
                         }
 
-                        // 标记最后一步落子点 (小红点标记)
                         if (lastMoveHighlight != null && lastMoveHighlight[0] == r && lastMoveHighlight[1] == c) {
                             paint.setColor(Color.RED);
                             canvas.drawCircle(cx, cy, cellSize * 0.1f, paint);
@@ -485,7 +493,6 @@ public class MainActivity extends Activity {
         }
 
         private void drawUI(Canvas canvas) {
-            // 顶部：模式切换按钮
             String modeStr = gameMode == 0 ? "模式: 人机对战" : "模式: 双人对战";
             float modeBtnW = w * 0.45f;
             float modeBtnH = w * 0.12f;
@@ -493,27 +500,20 @@ public class MainActivity extends Activity {
             float modeBtnY = margin;
             drawBtn(canvas, modeStr, modeBtnX, modeBtnY, modeBtnX + modeBtnW, modeBtnY + modeBtnH, Color.parseColor("#E0E0E0"), Color.BLACK, w * 0.04f);
 
-            // 底部区域开始坐标
             float bottomStartY = startY + boardSize + w * 0.1f;
 
-            // 状态提示文本
             paint.setColor(Color.RED); 
-            paint.setStyle(Paint.Style.FILL); // 确保文字是实心的
+            paint.setStyle(Paint.Style.FILL); 
             paint.setTextSize(w * 0.055f); 
             paint.setTextAlign(Paint.Align.CENTER);
             canvas.drawText(statusMessage, w / 2f, bottomStartY, paint);
 
-            // 按钮布局参数
-            float btnW = w * 0.26f;
-            float btnH = w * 0.12f;
-            float space = (w - 3 * btnW) / 4f;
-            
+            float btnW = w * 0.26f, btnH = w * 0.12f, space = (w - 3 * btnW) / 4f;
             float row1Y = bottomStartY + w * 0.08f;
             drawBtn(canvas, "悔棋", space, row1Y, space + btnW, row1Y + btnH, Color.parseColor("#E0E0E0"), Color.BLACK, w * 0.045f);
             drawBtn(canvas, "重玩", space*2 + btnW, row1Y, space*2 + btnW*2, row1Y + btnH, Color.parseColor("#4CAF50"), Color.WHITE, w * 0.045f);
             drawBtn(canvas, "退出", space*3 + btnW*2, row1Y, space*3 + btnW*3, row1Y + btnH, Color.parseColor("#F44336"), Color.WHITE, w * 0.045f);
 
-            // 仅在人机模式下显示难度选择
             if (gameMode == 0) {
                 float row2Y = row1Y + btnH + w * 0.04f;
                 int c1 = aiDifficultyDepth == 3 ? Color.parseColor("#81C784") : Color.parseColor("#EEEEEE");
@@ -527,12 +527,10 @@ public class MainActivity extends Activity {
         }
 
         private void drawBtn(Canvas canvas, String text, float l, float t, float r, float b, int bg, int fg, float textSize) {
-            // 确保按钮背景是实心的
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(bg); 
             canvas.drawRoundRect(l, t, r, b, w*0.02f, w*0.02f, paint);
             
-            // 绘制文字
             paint.setColor(fg); 
             paint.setTextSize(textSize);
             paint.setTextAlign(Paint.Align.CENTER);
@@ -546,11 +544,9 @@ public class MainActivity extends Activity {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 float ex = event.getX(), ey = event.getY();
 
-                // 按钮点击检测辅助工具
                 float modeBtnW = w * 0.45f, modeBtnH = w * 0.12f, modeBtnX = w / 2 - modeBtnW / 2, modeBtnY = margin;
                 float btnW = w * 0.26f, btnH = w * 0.12f, space = (w - 3 * btnW) / 4f;
-                float row1Y = startY + boardSize + w * 0.18f;
-                float row2Y = row1Y + btnH + w * 0.04f;
+                float row1Y = startY + boardSize + w * 0.18f, row2Y = row1Y + btnH + w * 0.04f;
 
                 if (checkClick(ex, ey, modeBtnX, modeBtnY, modeBtnX + modeBtnW, modeBtnY + modeBtnH)) {
                     if (aiThinking) return true;
@@ -559,16 +555,15 @@ public class MainActivity extends Activity {
                     return true;
                 }
                 if (checkClick(ex, ey, space, row1Y, space + btnW, row1Y + btnH)) { undoMove(); return true; }
-                if (checkClick(ex, ey, space*2 + btnW, row1Y, space*2 + btnW*2, row1Y + btnH)) { restartGame(); return true; }
+                if (checkClick(ex, ey, space*2 + btnW, row1Y, space*2 + btnW*2, row1Y + btnH)) { if (!aiThinking) restartGame(); return true; }
                 if (checkClick(ex, ey, space*3 + btnW*2, row1Y, space*3 + btnW*3, row1Y + btnH)) { System.exit(0); return true; }
 
-                if (gameMode == 0) {
+                if (gameMode == 0 && !aiThinking) {
                     if (checkClick(ex, ey, space, row2Y, space + btnW, row2Y + btnH)) { setDepth(3); return true; }
                     if (checkClick(ex, ey, space*2 + btnW, row2Y, space*2 + btnW*2, row2Y + btnH)) { setDepth(6); return true; }
                     if (checkClick(ex, ey, space*3 + btnW*2, row2Y, space*3 + btnW*3, row2Y + btnH)) { setDepth(9); return true; }
                 }
 
-                // 完美贴合的触控网格检测
                 if (!gameOver && !aiThinking) {
                     if (gameMode == 1 || (gameMode == 0 && currentPlayer == humanColor)) {
                         int c = Math.round((ex - startX) / cellSize);
@@ -580,11 +575,11 @@ public class MainActivity extends Activity {
                                 invalidate();
                             } else {
                                 makeMove(r, c, currentPlayer);
-                                if (checkWin(r, c, currentPlayer)) { 
+                                if (checkWin(board, r, c, currentPlayer)) { 
                                     statusMessage = (currentPlayer == 1 ? "黑棋" : "白棋") + "绝杀了！";
                                     gameOver = true; 
                                 } else {
-                                    currentPlayer = 3 - currentPlayer; // 切换 1->2 或 2->1
+                                    currentPlayer = 3 - currentPlayer; 
                                     updateStatusMsg();
                                     if (gameMode == 0) triggerAiMove();
                                 }
@@ -612,20 +607,21 @@ public class MainActivity extends Activity {
             moveHistory.add(new int[]{r, c, p});
             currentZobristHash ^= zobristTable[r][c][p]; 
             lastMoveHighlight = new int[]{r, c};
+            syncBoard(); // 更新前台 UI
         }
 
         private void undoMove() {
-            if (aiThinking) return;
-            int pops = gameMode == 0 ? 2 : 1; // 人机退两步，人人退一步
+            if (aiThinking || gameOver) return;
+            int pops = gameMode == 0 ? 2 : 1; 
             if (moveHistory.size() >= pops) {
                 for (int i = 0; i < pops; i++) {
                     int[] m = moveHistory.remove(moveHistory.size() - 1);
                     board[m[0]][m[1]] = 0; 
                     currentZobristHash ^= zobristTable[m[0]][m[1]][m[2]];
-                    currentPlayer = m[2]; // 恢复下棋权
+                    currentPlayer = m[2]; 
                 }
                 lastMoveHighlight = moveHistory.isEmpty() ? null : new int[]{moveHistory.get(moveHistory.size()-1)[0], moveHistory.get(moveHistory.size()-1)[1]};
-                gameOver = false; 
+                syncBoard(); // 刷新退回后的前台 UI
                 updateStatusMsg();
                 invalidate();
             }
