@@ -36,7 +36,7 @@ public class MainActivity extends Activity {
         private final int BOARD_SIZE = 15;
         private int[][] board = new int[BOARD_SIZE][BOARD_SIZE];
         
-        // 双缓冲技术：引入专门用于显示的 UI 棋盘，彻底避免 AI 思考时画面疯狂撕裂和闪烁
+        // 双缓冲技术：引入专门用于显示的 UI 棋盘
         private int[][] displayBoard = new int[BOARD_SIZE][BOARD_SIZE];
         
         private ArrayList<int[]> moveHistory = new ArrayList<>();
@@ -45,10 +45,13 @@ public class MainActivity extends Activity {
         private int gameMode = 0; 
         private int humanColor = 1; 
         private int currentPlayer = 1; 
-        private int aiDifficultyDepth = 6;
+        private int aiDifficultyDepth = 7; // 默认调整为7
         private volatile boolean aiThinking = false;
         private volatile boolean gameOver = false;
         private String statusMessage = "";
+
+        // 思考计时器变量
+        private volatile int thinkingSeconds = 0;
 
         private float w, margin, boardSize, cellSize, startX, startY;
 
@@ -60,12 +63,35 @@ public class MainActivity extends Activity {
         private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private Random rand = new Random();
 
+        // 核心内存优化：避免局部变量在千万级树搜索中重复创建数组引发严重GC卡顿
+        private ThreadLocal<int[]> threadLocalLine = new ThreadLocal<int[]>() {
+            @Override
+            protected int[] initialValue() { return new int[9]; }
+        };
+
+        // 标准化、高智能化的棋形匹配库（将活四与冲四剥离，增强AI防守智商）
+        static final int[][] LIVE_FOUR = {{0,1,1,1,1,0}};
+        static final int[][] DEAD_FOUR = {{1,1,1,1,0}, {0,1,1,1,1}, {1,0,1,1,1}, {1,1,0,1,1}, {1,1,1,0,1}};
+        static final int[][] LIVE_THREE = {{0,1,1,1,0,0}, {0,0,1,1,1,0}, {0,1,0,1,1,0}, {0,1,1,0,1,0}};
+
         class TTEntry {
             int depth, score, flag, bestR, bestC;
             TTEntry(int d, int s, int f, int r, int c) {
                 depth = d; score = s; flag = f; bestR = r; bestC = c;
             }
         }
+
+        private Runnable timerRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (aiThinking) {
+                    thinkingSeconds++;
+                    updateStatusMsg();
+                    invalidate();
+                    postDelayed(this, 1000);
+                }
+            }
+        };
 
         public GomokuView(Context context) {
             super(context);
@@ -88,7 +114,6 @@ public class MainActivity extends Activity {
             }
         }
 
-        // 同步后台棋盘到前台 UI 棋盘
         private void syncBoard() {
             for (int i = 0; i < BOARD_SIZE; i++) {
                 System.arraycopy(board[i], 0, displayBoard[i], 0, BOARD_SIZE);
@@ -114,7 +139,7 @@ public class MainActivity extends Activity {
 
         private void loadGameState() {
             SharedPreferences prefs = getContext().getSharedPreferences("GomokuSave", Context.MODE_PRIVATE);
-            aiDifficultyDepth = prefs.getInt("aiDifficultyDepth", 6); 
+            aiDifficultyDepth = prefs.getInt("aiDifficultyDepth", 7); 
             String history = prefs.getString("moveHistory", "");
 
             if (history.isEmpty()) {
@@ -159,6 +184,7 @@ public class MainActivity extends Activity {
             transpositionTable.clear();
             aiThinking = false;
             gameOver = false;
+            removeCallbacks(timerRunnable);
             
             currentPlayer = 1; 
             if (gameMode == 0) {
@@ -172,6 +198,21 @@ public class MainActivity extends Activity {
             if (gameMode == 0 && humanColor == 2) triggerAiMove();
         }
 
+        // 推算预计时间 (基于优化后的Java引擎能力进行合理映射)
+        private int getEstimatedTime(int d) {
+            if (d <= 5) return 0;
+            switch(d) {
+                case 6: return 1;
+                case 7: return 2;
+                case 8: return 4;
+                case 9: return 12;
+                case 10: return 35;
+                case 11: return 90;
+                case 12: return 200;
+                default: return (int)(200 * Math.pow(2.2, d - 12));
+            }
+        }
+
         private void updateStatusMsg() {
             if (gameOver) return;
             if (gameMode == 1) {
@@ -180,15 +221,19 @@ public class MainActivity extends Activity {
                 if (currentPlayer == humanColor) {
                     statusMessage = "轮到玩家下棋";
                 } else {
-                    statusMessage = (aiDifficultyDepth >= 6) ? "AI思考中..." : "AI下棋中...";
+                    if (aiDifficultyDepth > 5) {
+                        statusMessage = "AI思考中... 已思考 " + thinkingSeconds + " (预计" + getEstimatedTime(aiDifficultyDepth) + "秒)";
+                    } else {
+                        statusMessage = "AI下棋中...";
+                    }
                 }
             }
         }
 
-        // ======================== 修复后完美的核心算法 ========================
+        // ======================== 超高性能核心算法 ========================
 
         private boolean isForbiddenMove(int[][] b, int r, int c, int p) {
-            if (p == 2) return false; // 白棋没有禁手规则，直接放行
+            if (p == 2) return false; // 白棋无禁手
             int original = b[r][c];
             b[r][c] = p;
             if (checkWin(b, r, c, p)) { b[r][c] = original; return false; }
@@ -196,47 +241,25 @@ public class MainActivity extends Activity {
             int[][] dirs = {{1,0}, {0,1}, {1,1}, {1,-1}};
             for (int[] d : dirs) {
                 int[] line = extractLine(b, r, c, d);
-                if (countContinuous(line, 4, p) >= 6) { b[r][c] = original; return true; } // 黑棋长连判定禁手
-                if (checkFourPattern(line, p)) fours++;
-                if (checkLiveThreePattern(line, p)) liveThrees++;
+                if (countContinuous(line, 4, p) >= 6) { b[r][c] = original; return true; } // 长连禁手
+                // 任一活四、冲四都算成一"四"
+                if (matchAnyPattern(line, p, LIVE_FOUR) || matchAnyPattern(line, p, DEAD_FOUR)) fours++;
+                if (matchAnyPattern(line, p, LIVE_THREE)) liveThrees++;
             }
             b[r][c] = original;
             return fours >= 2 || liveThrees >= 2;
         }
 
-        // 彻底修复引发死循环和漏判的神级 Bug
         private int countContinuous(int[] line, int center, int p) {
             int count = 1;
-            // 向右延伸
             for (int i = center + 1; i < line.length && line[i] == p; i++) count++;
-            // 向左延伸 (注意：此处必须是 i--)
             for (int i = center - 1; i >= 0 && line[i] == p; i--) count++;
             return count;
         }
 
-        private boolean checkFourPattern(int[] line, int p) {
-            int[][] patterns = {{0,p,p,p,p}, {p,p,p,p,0}, {p,0,p,p,p}, {p,p,0,p,p}, {p,p,p,0,p}};
-            return matchAnyPattern(line, patterns);
-        }
-
-        private boolean checkLiveThreePattern(int[] line, int p) {
-            int[][] patterns = {{0,p,p,p,0,0}, {0,0,p,p,p,0}, {0,p,0,p,p,0}, {0,p,p,0,p,0}};
-            return matchAnyPattern(line, patterns);
-        }
-
-        private boolean matchAnyPattern(int[] line, int[][] patterns) {
-            for (int[] p : patterns) {
-                for (int i = 0; i <= line.length - p.length; i++) {
-                    boolean match = true;
-                    for (int j = 0; j < p.length; j++) if (line[i+j] != p[j]) { match = false; break; }
-                    if (match) return true;
-                }
-            }
-            return false;
-        }
-
+        // GC优化：不再频繁 new 数组对象，而是直接复用线程内分配的缓冲数组
         private int[] extractLine(int[][] b, int r, int c, int[] d) {
-            int[] line = new int[9];
+            int[] line = threadLocalLine.get();
             for (int i = -4; i <= 4; i++) {
                 int nr = r + d[0] * i, nc = c + d[1] * i;
                 if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) line[i + 4] = b[nr][nc];
@@ -245,42 +268,66 @@ public class MainActivity extends Activity {
             return line;
         }
 
-        // 修复了抹除棋盘盘面导致棋子丢失的核心 Bug
+        // 高效零对象内存分配验证引擎
+        private boolean matchAnyPattern(int[] line, int p, int[][] patterns) {
+            for (int[] pat : patterns) {
+                for (int i = 0; i <= 9 - pat.length; i++) {
+                    boolean match = true;
+                    for (int j = 0; j < pat.length; j++) {
+                        int expected = pat[j];
+                        if (expected == 1 && line[i+j] != p) { match = false; break; }
+                        if (expected == 0 && line[i+j] != 0) { match = false; break; }
+                    }
+                    if (match) return true;
+                }
+            }
+            return false;
+        }
+
         private int localScore(int[][] b, int r, int c, int p) {
-            int score = 0, fours = 0, liveThrees = 0;
+            int score = 0, liveFours = 0, deadFours = 0, liveThrees = 0;
             int[][] dirs = {{1,0}, {0,1}, {1,1}, {1,-1}};
-            int original = b[r][c]; // 记住原本是什么，以防止把真实棋局清空
+            int original = b[r][c]; 
             b[r][c] = p;
             
             for (int[] d : dirs) {
                 int[] line = extractLine(b, r, c, d);
                 int consecutive = countContinuous(line, 4, p);
-                // 黑棋五连满分，白棋五连及以上满分
+                
                 if (p == 1 && consecutive == 5) { b[r][c] = original; return 1000000; }
                 if (p == 2 && consecutive >= 5) { b[r][c] = original; return 1000000; }
                 
-                if (checkFourPattern(line, p)) { fours++; score += 2000; } 
-                else if (checkLiveThreePattern(line, p)) { liveThrees++; score += 2000; }
+                // 将活四与冲四剥离赋予不同分数，极大提升低层深度的防守拦截智商
+                if (matchAnyPattern(line, p, LIVE_FOUR)) { liveFours++; score += 100000; } 
+                else if (matchAnyPattern(line, p, DEAD_FOUR)) { deadFours++; score += 3000; }
+                
+                if (matchAnyPattern(line, p, LIVE_THREE)) { liveThrees++; score += 3000; }
             }
-            b[r][c] = original; // 绝对归还！
+            b[r][c] = original; 
             
-            if (fours >= 2) score += 90000;
-            else if (fours >= 1 && liveThrees >= 1) score += 80000;
+            if (liveFours > 0) score += 100000;
+            if (deadFours >= 2) score += 90000;
+            else if (deadFours >= 1 && liveThrees >= 1) score += 80000;
             else if (liveThrees >= 2) score += 70000;
             return score;
         }
 
         private void triggerAiMove() {
             aiThinking = true;
+            thinkingSeconds = 0;
             updateStatusMsg();
             invalidate();
+            removeCallbacks(timerRunnable);
+            postDelayed(timerRunnable, 1000); // 启动计时器
+
             new Thread(() -> {
                 int[] bestMove = iterativeDeepening(aiDifficultyDepth);
                 post(() -> {
+                    removeCallbacks(timerRunnable);
                     if (bestMove != null && bestMove[0] != -1 && !gameOver) {
                         makeMove(bestMove[0], bestMove[1], currentPlayer);
                         if (checkWin(board, bestMove[0], bestMove[1], currentPlayer)) {
-                            statusMessage = "AI 胜利！";
+                            statusMessage = "AI赢了！";
                             gameOver = true;
                         } else {
                             currentPlayer = humanColor; 
@@ -410,7 +457,6 @@ public class MainActivity extends Activity {
             return totalScore;
         }
 
-        // 完美五子棋判定规则：黑棋赢必须恰好 5 子，白棋赢 >= 5 子
         private boolean checkWin(int[][] b, int r, int c, int p) {
             int[][] dirs = {{1,0}, {0,1}, {1,1}, {1,-1}};
             for (int[] d : dirs) {
@@ -464,7 +510,6 @@ public class MainActivity extends Activity {
                 for (int c : stars) canvas.drawCircle(startX + c * cellSize, startY + r * cellSize, cellSize * 0.15f, paint);
             }
 
-            // 彻底解决撕裂：前端绘画只认准专门的 UI 防闪烁双缓冲棋盘
             for (int r = 0; r < BOARD_SIZE; r++) {
                 for (int c = 0; c < BOARD_SIZE; c++) {
                     if (displayBoard[r][c] != 0) {
@@ -494,10 +539,8 @@ public class MainActivity extends Activity {
 
         private void drawUI(Canvas canvas) {
             String modeStr = gameMode == 0 ? "模式: 人机对战" : "模式: 双人对战";
-            float modeBtnW = w * 0.45f;
-            float modeBtnH = w * 0.12f;
-            float modeBtnX = w / 2 - modeBtnW / 2;
-            float modeBtnY = margin;
+            float modeBtnW = w * 0.45f, modeBtnH = w * 0.12f;
+            float modeBtnX = w / 2 - modeBtnW / 2, modeBtnY = margin;
             drawBtn(canvas, modeStr, modeBtnX, modeBtnY, modeBtnX + modeBtnW, modeBtnY + modeBtnH, Color.parseColor("#E0E0E0"), Color.BLACK, w * 0.04f);
 
             float bottomStartY = startY + boardSize + w * 0.1f;
@@ -516,13 +559,26 @@ public class MainActivity extends Activity {
 
             if (gameMode == 0) {
                 float row2Y = row1Y + btnH + w * 0.04f;
-                int c1 = aiDifficultyDepth == 3 ? Color.parseColor("#81C784") : Color.parseColor("#EEEEEE");
-                int c2 = aiDifficultyDepth == 6 ? Color.parseColor("#64B5F6") : Color.parseColor("#EEEEEE");
-                int c3 = aiDifficultyDepth == 9 ? Color.parseColor("#FF8A65") : Color.parseColor("#EEEEEE");
+                int c1 = aiDifficultyDepth == 4 ? Color.parseColor("#81C784") : Color.parseColor("#EEEEEE");
+                int c2 = aiDifficultyDepth == 7 ? Color.parseColor("#64B5F6") : Color.parseColor("#EEEEEE");
+                int c3 = aiDifficultyDepth == 11 ? Color.parseColor("#FF8A65") : Color.parseColor("#EEEEEE");
                 
-                drawBtn(canvas, "简单(3层)", space, row2Y, space + btnW, row2Y + btnH, c1, Color.BLACK, w * 0.038f);
-                drawBtn(canvas, "普通(6层)", space*2 + btnW, row2Y, space*2 + btnW*2, row2Y + btnH, c2, Color.BLACK, w * 0.038f);
-                drawBtn(canvas, "困难(9层)", space*3 + btnW*2, row2Y, space*3 + btnW*3, row2Y + btnH, c3, Color.BLACK, w * 0.038f);
+                // 深度设定修改为：4、7、11
+                drawBtn(canvas, "简单(4层)", space, row2Y, space + btnW, row2Y + btnH, c1, Color.BLACK, w * 0.038f);
+                drawBtn(canvas, "普通(7层)", space*2 + btnW, row2Y, space*2 + btnW*2, row2Y + btnH, c2, Color.BLACK, w * 0.038f);
+                drawBtn(canvas, "困难(11层)", space*3 + btnW*2, row2Y, space*3 + btnW*3, row2Y + btnH, c3, Color.BLACK, w * 0.038f);
+
+                // 增加自由深度控制面板 (1~20层任意调)
+                float row3Y = row2Y + btnH + w * 0.04f;
+                drawBtn(canvas, "-", space, row3Y, space + btnW, row3Y + btnH, Color.parseColor("#E0E0E0"), Color.BLACK, w * 0.06f);
+                
+                paint.setColor(Color.BLACK);
+                paint.setTextSize(w * 0.045f);
+                Paint.FontMetrics fm = paint.getFontMetrics();
+                float textY = row3Y + btnH / 2f - (fm.descent + fm.ascent) / 2f;
+                canvas.drawText("自由深度: " + aiDifficultyDepth, w / 2f, textY, paint);
+
+                drawBtn(canvas, "+", w - space - btnW, row3Y, w - space, row3Y + btnH, Color.parseColor("#E0E0E0"), Color.BLACK, w * 0.06f);
             }
         }
 
@@ -546,7 +602,9 @@ public class MainActivity extends Activity {
 
                 float modeBtnW = w * 0.45f, modeBtnH = w * 0.12f, modeBtnX = w / 2 - modeBtnW / 2, modeBtnY = margin;
                 float btnW = w * 0.26f, btnH = w * 0.12f, space = (w - 3 * btnW) / 4f;
-                float row1Y = startY + boardSize + w * 0.18f, row2Y = row1Y + btnH + w * 0.04f;
+                float row1Y = startY + boardSize + w * 0.18f;
+                float row2Y = row1Y + btnH + w * 0.04f;
+                float row3Y = row2Y + btnH + w * 0.04f;
 
                 if (checkClick(ex, ey, modeBtnX, modeBtnY, modeBtnX + modeBtnW, modeBtnY + modeBtnH)) {
                     if (aiThinking) return true;
@@ -559,9 +617,19 @@ public class MainActivity extends Activity {
                 if (checkClick(ex, ey, space*3 + btnW*2, row1Y, space*3 + btnW*3, row1Y + btnH)) { System.exit(0); return true; }
 
                 if (gameMode == 0 && !aiThinking) {
-                    if (checkClick(ex, ey, space, row2Y, space + btnW, row2Y + btnH)) { setDepth(3); return true; }
-                    if (checkClick(ex, ey, space*2 + btnW, row2Y, space*2 + btnW*2, row2Y + btnH)) { setDepth(6); return true; }
-                    if (checkClick(ex, ey, space*3 + btnW*2, row2Y, space*3 + btnW*3, row2Y + btnH)) { setDepth(9); return true; }
+                    // 固定层数点击
+                    if (checkClick(ex, ey, space, row2Y, space + btnW, row2Y + btnH)) { setDepth(4); return true; }
+                    if (checkClick(ex, ey, space*2 + btnW, row2Y, space*2 + btnW*2, row2Y + btnH)) { setDepth(7); return true; }
+                    if (checkClick(ex, ey, space*3 + btnW*2, row2Y, space*3 + btnW*3, row2Y + btnH)) { setDepth(11); return true; }
+                    // 自由层数点击 (-/+)
+                    if (checkClick(ex, ey, space, row3Y, space + btnW, row3Y + btnH)) {
+                        if (aiDifficultyDepth > 1) setDepth(aiDifficultyDepth - 1);
+                        return true;
+                    }
+                    if (checkClick(ex, ey, w - space - btnW, row3Y, w - space, row3Y + btnH)) {
+                        if (aiDifficultyDepth < 20) setDepth(aiDifficultyDepth + 1);
+                        return true;
+                    }
                 }
 
                 if (!gameOver && !aiThinking) {
@@ -571,12 +639,17 @@ public class MainActivity extends Activity {
                         
                         if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] == 0) {
                             if (currentPlayer == 1 && isForbiddenMove(board, r, c, 1)) {
+                                // 真人下到禁手仅弹提示并阻断流程，不判输
                                 statusMessage = "禁手提示：黑棋不可下此位置！";
                                 invalidate();
                             } else {
                                 makeMove(r, c, currentPlayer);
                                 if (checkWin(board, r, c, currentPlayer)) { 
-                                    statusMessage = (currentPlayer == 1 ? "黑棋" : "白棋") + "绝杀了！";
+                                    if (gameMode == 1) {
+                                        statusMessage = (currentPlayer == 1 ? "黑棋" : "白棋") + "胜利！";
+                                    } else {
+                                        statusMessage = (currentPlayer == humanColor) ? "你赢了！" : "AI赢了！";
+                                    }
                                     gameOver = true; 
                                 } else {
                                     currentPlayer = 3 - currentPlayer; 
@@ -621,7 +694,7 @@ public class MainActivity extends Activity {
                     currentPlayer = m[2]; 
                 }
                 lastMoveHighlight = moveHistory.isEmpty() ? null : new int[]{moveHistory.get(moveHistory.size()-1)[0], moveHistory.get(moveHistory.size()-1)[1]};
-                syncBoard(); // 刷新退回后的前台 UI
+                syncBoard();
                 updateStatusMsg();
                 invalidate();
             }
