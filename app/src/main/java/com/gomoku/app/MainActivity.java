@@ -69,10 +69,10 @@ public class MainActivity extends Activity {
             protected int[] initialValue() { return new int[9]; }
         };
 
-        // 标准化、高智能化的棋形匹配库（将活四与冲四剥离，增强AI防守智商）
-        static final int[][] LIVE_FOUR = {{0,1,1,1,1,0}};
-        static final int[][] DEAD_FOUR = {{1,1,1,1,0}, {0,1,1,1,1}, {1,0,1,1,1}, {1,1,0,1,1}, {1,1,1,0,1}};
-        static final int[][] LIVE_THREE = {{0,1,1,1,0,0}, {0,0,1,1,1,0}, {0,1,0,1,1,0}, {0,1,1,0,1,0}};
+        // 标准化、高智能化的棋形匹配库（去掉了 static 以修复 Java 内部类的语法报错）
+        final int[][] LIVE_FOUR = {{0,1,1,1,1,0}};
+        final int[][] DEAD_FOUR = {{1,1,1,1,0}, {0,1,1,1,1}, {1,0,1,1,1}, {1,1,0,1,1}, {1,1,1,0,1}};
+        final int[][] LIVE_THREE = {{0,1,1,1,0,0}, {0,0,1,1,1,0}, {0,1,0,1,1,0}, {0,1,1,0,1,0}};
 
         class TTEntry {
             int depth, score, flag, bestR, bestC;
