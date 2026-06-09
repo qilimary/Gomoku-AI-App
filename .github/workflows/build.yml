@@ -55,11 +55,23 @@ jobs:
           }
           EOF
           
-          # 自动生成 AndroidManifest.xml
+          # 生成应用精美图标 (Vector Drawable)
+          mkdir -p app/src/main/res/drawable
+          cat << 'EOF' > app/src/main/res/drawable/ic_launcher.xml
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#E3C498" android:pathData="M10,10 h88 v88 h-88 z" />
+              <path android:strokeColor="#000000" android:strokeWidth="1.5" android:pathData="M20,20 h68 M20,33.6 h68 M20,47.2 h68 M20,60.8 h68 M20,74.4 h68 M20,88 h68 M20,20 v68 M33.6,20 v68 M47.2,20 v68 M60.8,20 v68 M74.4,20 v68 M88,20 v68" />
+              <circle android:fillColor="#000000" android:cx="47.2" android:cy="47.2" android:radius="4.5" />
+              <circle android:fillColor="#FFFFFF" android:cx="60.8" android:cy="60.8" android:radius="4.5" />
+          </vector>
+          EOF
+          
+          # 自动生成 AndroidManifest.xml，挂载图标和新名字
           mkdir -p app/src/main
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <application android:label="五子棋智能对战" android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+              <application android:label="五子棋" android:icon="@drawable/ic_launcher" android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
                   <activity android:name="com.gomoku.app.MainActivity" android:exported="true">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
