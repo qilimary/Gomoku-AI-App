@@ -98,7 +98,6 @@ public class MainActivity extends Activity {
         private ThreadLocal<int[]> x_tlMoves = new ThreadLocal<int[]>() { @Override protected int[] initialValue() { return new int[150]; } };
         private ThreadLocal<int[]> x_tlCheckMoves = new ThreadLocal<int[]>() { @Override protected int[] initialValue() { return new int[150]; } };
         
-        // 新增：象棋杀手走法表，提升剪枝效率
         private int[] x_killerMoves = new int[30];
 
         class XMoveRecord {
@@ -108,7 +107,7 @@ public class MainActivity extends Activity {
             }
         }
         class XTTEntry {
-            int depth, score, flag, bestMove; // 修复：将bestMove直接存入Entry，防止哈希冲突导致智障走法
+            int depth, score, flag, bestMove; 
             XTTEntry(int d, int s, int f, int bm) { depth=d; score=s; flag=f; bestMove=bm; }
         }
 
@@ -329,7 +328,7 @@ public class MainActivity extends Activity {
                             if (g_isForbiddenMove(g_board, moveToPlay[0], moveToPlay[1], g_currentPlayer)) {
                                 g_statusMsg = "AI算出禁手，重新评估";
                                 updateStatusMsg(); invalidate();
-                                g_currentPlayer = g_humanColor; // 交还回合重算
+                                g_currentPlayer = g_humanColor; 
                                 return;
                             }
                             g_makeMove(moveToPlay[0], moveToPlay[1], g_currentPlayer);
@@ -349,7 +348,7 @@ public class MainActivity extends Activity {
             for (int d=1; d<=maxDepth; d++) {
                 if (!keepThinking) break;
                 int[] res = g_alphaBeta(d, Integer.MIN_VALUE+1, Integer.MAX_VALUE-1, aiColor);
-                if (res[0] != -1) { best[0]=res[0]; best[1]=res[1]; if (res[2]>=900000) break; }
+                if (res[0] != -1) { best[0]=res[res.length-3]; best[1]=res[res.length-2]; if (res[res.length-1]>=900000) break; }
             }
             return best;
         }
@@ -359,16 +358,21 @@ public class MainActivity extends Activity {
             int aiColor = 3 - g_humanColor;
             long hashKey = g_zobristHash ^ (player==aiColor ? 0xFAFBFCFDL : 0L);
             GTTEntry entry = g_ttTable.get(hashKey);
+            
             int ttR = -1, ttC = -1;
-            if (entry != null && entry.depth >= depth) {
-                if (entry.flag == 0) return new int[]{entry.bestR, entry.bestC, entry.score};
-                if (entry.flag == 1 && entry.score > alpha) alpha = entry.score;
-                if (entry.flag == 2 && entry.score < beta) beta = entry.score;
-                if (alpha >= beta) return new int[]{entry.bestR, entry.bestC, entry.score};
-                ttR = entry.bestR; ttC = entry.bestC;
+            // 【重大修正】：将提取置换表最佳走法的逻辑移到外侧。
+            // 只要节点有缓存记录，无论缓存深浅，其记录的 bestR/bestC 都是绝佳的第一演练选择。
+            if (entry != null) {
+                ttR = entry.bestR; 
+                ttC = entry.bestC;
+                if (entry.depth >= depth) {
+                    if (entry.flag == 0) return new int[]{entry.bestR, entry.bestC, entry.score};
+                    if (entry.flag == 1 && entry.score > alpha) alpha = entry.score;
+                    if (entry.flag == 2 && entry.score < beta) beta = entry.score;
+                    if (alpha >= beta) return new int[]{entry.bestR, entry.bestC, entry.score};
+                }
             }
 
-            // 优化：返回打包的int数组，消除对象创建带来的GC停顿
             int[] moves = g_genMoves(ttR, ttC, aiColor);
             if (moves.length == 0) return new int[]{-1, -1, 0};
 
@@ -378,7 +382,6 @@ public class MainActivity extends Activity {
                 int r = (m >> 8) & 0xFF;
                 int c = m & 0xFF;
 
-                // 优化：搜索中移除耗时禁手判断，AI不会主动下禁手送死
                 g_board[r][c] = player; g_zobristHash ^= g_zobristTable[r][c][player];
                 int score = g_checkWin(g_board, r, c, player) ? ((player==aiColor) ? 1000000+depth : -1000000-depth) 
                                                               : g_alphaBeta(depth-1, alpha, beta, 3-player)[2];
@@ -395,7 +398,6 @@ public class MainActivity extends Activity {
             int fScore = (player == aiColor) ? max : min;
             int flag = (fScore <= origAlpha) ? 2 : (fScore >= beta ? 1 : 0);
             if (bestR != -1 && keepThinking) {
-                // 优化：移除 clear()，让置换表自然覆盖，保持迭代加深优势
                 g_ttTable.put(hashKey, new GTTEntry(depth, fScore, flag, bestR, bestC));
             }
             return new int[]{bestR, bestC, fScore};
@@ -408,7 +410,6 @@ public class MainActivity extends Activity {
             return false;
         }
 
-        // 优化：不再 new int[]，改用基本类型打包，彻底消除 GC 卡顿
         private int[] g_genMoves(int pvR, int pvC, int aiColor) {
             int[] list = new int[15 * 15]; 
             int size = 0; int hC = 3-aiColor;
@@ -422,9 +423,12 @@ public class MainActivity extends Activity {
                     }
                 }
             }
-            if (maxR == 0) { return new int[]{(100000 << 16) | (7 << 8) | 7}; } // 空盘走天元
-            minR = Math.max(0, minR-3); maxR = Math.min(G_BOARD_SIZE-1, maxR+3);
-            minC = Math.max(0, minC-3); maxC = Math.min(G_BOARD_SIZE-1, maxC+3);
+            // 【修正】：修复判断空盘的逻辑，防止第0行落子引发的异常判定
+            if (g_moveHistory.isEmpty()) { return new int[]{(100000 << 16) | (7 << 8) | 7}; } 
+            
+            // 【优化】：搜索区域剪裁半径从 3 缩减到 2，不丢失任意活三/死四关键位，大幅减少无效空位。
+            minR = Math.max(0, minR-2); maxR = Math.min(G_BOARD_SIZE-1, maxR+2);
+            minC = Math.max(0, minC-2); maxC = Math.min(G_BOARD_SIZE-1, maxC+2);
 
             if (pvR>=minR && pvR<=maxR && pvC>=minC && pvC<=maxC && g_board[pvR][pvC]==0) {
                 int s = g_localScore(g_board,pvR,pvC,aiColor)+g_localScore(g_board,pvR,pvC,hC)+100000;
@@ -433,17 +437,17 @@ public class MainActivity extends Activity {
 
             for (int r=minR; r<=maxR; r++) {
                 for (int c=minC; c<=maxC; c++) {
-                    if (g_board[r][c]==0 && g_hasNeighbor(g_board,r,c,3) && (r!=pvR||c!=pvC)) {
+                    // 【优化】：邻域检测半径从 3 缩减到 2
+                    if (g_board[r][c]==0 && g_hasNeighbor(g_board,r,c,2) && (r!=pvR||c!=pvC)) {
                         int s = g_localScore(g_board,r,c,aiColor)+g_localScore(g_board,r,c,hC);
                         list[size++] = (s << 16) | (r << 8) | c;
                     }
                 }
             }
             
-            // 冒泡排序，仅排序前12个最高分走法
             for (int i=0; i<Math.min(12, size); i++) {
                 for (int j=i+1; j<size; j++) {
-                    if ((list[i] >>> 16) < (list[j] >>> 16)) { // 无符号右移比较分数
+                    if ((list[i] >>> 16) < (list[j] >>> 16)) { 
                         int temp = list[i]; list[i] = list[j]; list[j] = temp;
                     }
                 }
@@ -454,7 +458,6 @@ public class MainActivity extends Activity {
             return result;
         }
 
-        // 优化：边界裁剪，只评估有棋子附近的分数，极大加速叶节点评估
         private int g_evaluateBoard() {
             int score = 0, aiC = 3-g_humanColor;
             int minR = 15, maxR = 0, minC = 15, maxC = 0;
@@ -539,7 +542,7 @@ public class MainActivity extends Activity {
             x_moveHistory.clear(); x_selectedPos = null; x_aiLastMove = null; x_validMovesDisplay.clear();
             x_isRedTurn = true; x_aiThinking = false; keepThinking = false; x_gameOver = false;
             x_ttTable.clear(); 
-            for(int i=0; i<30; i++) x_killerMoves[i] = -1; // 初始化杀手表
+            for(int i=0; i<30; i++) x_killerMoves[i] = -1; 
             syncXiangqiBoard(); updateStatusMsg(); invalidate();
             if (triggerAI && x_gameMode == 0 && !x_isRedTurn) triggerXiangqiAiMove();
         }
@@ -717,7 +720,6 @@ public class MainActivity extends Activity {
             return true;
         }
 
-        // 智能优化：强化位置评估和开路线奖励
         private int x_evalBoard(char[][] b) {
             int score = 0;
             for (int r=0; r<10; r++) {
@@ -734,7 +736,7 @@ public class MainActivity extends Activity {
                         for(int pr = r + pawnDir; pr >= 0 && pr < 10; pr += pawnDir) {
                             if(b[pr][c] == (isR ? 'P' : 'p')) { isOpen = false; break; }
                         }
-                        if(isOpen) val += 20; // 车占开路线奖励
+                        if(isOpen) val += 20; 
                     } else if (lp=='c') {
                         val=450;
                         if (c==4) val+=20;
@@ -745,7 +747,7 @@ public class MainActivity extends Activity {
                         else if (!isR && r>=5) val += 30; 
                         if (isR && (r==2 || r==1) && (c==2 || c==6)) val += 50;
                         else if (!isR && (r==7 || r==8) && (c==2 || c==6)) val += 50;
-                        if (r==0||r==9) val -= 30; // 马在底线极度无用
+                        if (r==0||r==9) val -= 30; 
                     } else if (lp=='b') val=200; 
                     else if (lp=='a') val=200; 
                     else if (lp=='p') {
@@ -803,7 +805,6 @@ public class MainActivity extends Activity {
                 int res = x_alphaBeta(d, Integer.MIN_VALUE+1, Integer.MAX_VALUE-1, x_isRedTurn, hashKey, false);
                 if (!keepThinking) break;
                 XTTEntry en = x_ttTable.get(hashKey);
-                // 修复：直接读取置换表里的bestMove，彻底杜绝哈希异或带来的走法崩坏
                 if (en != null && en.depth == d && en.bestMove != -1) {
                     bestMove = en.bestMove; 
                     if (res > 90000) break;
@@ -815,7 +816,6 @@ public class MainActivity extends Activity {
         private int x_alphaBeta(int depth, int alpha, int beta, boolean isMax, long hash, boolean isNull) {
             if (x_isKingsFacing(x_board)) return isMax ? 100000 : -100000;
             
-            // 智能优化：将军延伸，被将军时加深搜索，防止漏算连杀
             boolean inCheck = x_isInCheck(x_board, isMax);
             if (inCheck) depth++;
             
@@ -825,7 +825,6 @@ public class MainActivity extends Activity {
                 return x_evalBoard(x_board);
             }
 
-            // 空步裁剪
             if (!isNull && depth >= 3 && !inCheck) {
                 long nextHash = hash ^ x_zobristTurn[0] ^ x_zobristTurn[1];
                 int val = x_alphaBeta(depth - 3, alpha, beta, !isMax, nextHash, true); 
@@ -853,7 +852,6 @@ public class MainActivity extends Activity {
             }
             if (moveCount == 0) return isMax ? -100000 : 100000;
 
-            // 走法排序：1.吃子优先 2.杀手走法优先
             int captureCount = 0;
             for (int i=0; i<moveCount; i++) {
                 int m = allMoves[i], er = (m>>4)&0xF, ec = m&0xF;
@@ -864,7 +862,6 @@ public class MainActivity extends Activity {
                     captureCount++;
                 }
             }
-            // 杀手启发排序
             if (x_killerMoves[depth] != -1) {
                 for (int i=captureCount; i<moveCount; i++) {
                     if (allMoves[i] == x_killerMoves[depth]) {
@@ -901,10 +898,8 @@ public class MainActivity extends Activity {
             }
 
             if (keepThinking && bestM != -1) {
-                // 修复：移除造成缓存崩坏的 x_ttTable.put(hash ^ 0xABCDEFL, ...) 逻辑
-                // 优化：移除 clear()，让置换表自动替换
                 x_ttTable.put(hash, new XTTEntry(depth, bestVal, flag, bestM));
-                if (flag != 0 && depth < 30) x_killerMoves[depth] = bestM; // 记录杀手走法
+                if (flag != 0 && depth < 30) x_killerMoves[depth] = bestM; 
             }
             return bestVal;
         }
@@ -1185,7 +1180,6 @@ public class MainActivity extends Activity {
             float switchBtnX = w / 2f - switchBtnW / 2f;
             float switchBtnY = (mode == 0 ? row3Y : row1Y) + btnH + w * 0.06f; 
             
-            // 修复：只要任何游戏AI在思考，就绝对禁止切换，防止状态锁死
             if (checkClick(ex, ey, switchBtnX, switchBtnY, switchBtnX+switchBtnW, switchBtnY+switchBtnH)) {
                 if (!g_aiThinking && !x_aiThinking) { 
                     currentGameType = 1 - currentGameType; 
