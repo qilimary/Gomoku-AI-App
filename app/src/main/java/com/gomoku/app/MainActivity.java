@@ -49,7 +49,7 @@ public class MainActivity extends Activity {
         private final int[][] X_DIRS_ADVISOR = {{-1,-1},{-1,1},{1,-1},{1,1}};
 
         // ================= 置换表通用参数 =================
-        private static final int TT_SIZE = 1 << 18; // 262144 个槽位，足够且不爆内存
+        private static final int TT_SIZE = 1 << 18; 
         private static final int TT_MASK = TT_SIZE - 1;
 
         // ================= 五子棋 变量 =================
@@ -69,12 +69,11 @@ public class MainActivity extends Activity {
         private int[][] g_posWeights = new int[G_BOARD_SIZE][G_BOARD_SIZE];
         private int[] g_tlLine = new int[9];
 
-        // 扁平化五子棋 TT 表
         private long[] g_ttKeys = new long[TT_SIZE];
         private int[] g_ttScores = new int[TT_SIZE];
         private byte[] g_ttDepths = new byte[TT_SIZE];
         private byte[] g_ttFlags = new byte[TT_SIZE];
-        private short[] g_ttBestMoves = new short[TT_SIZE]; // 高8位R，低8位C
+        private short[] g_ttBestMoves = new short[TT_SIZE]; 
 
         final int[][] G_LIVE_FOUR = {{0,1,1,1,1,0}};
         final int[][] G_DEAD_FOUR = {{1,1,1,1,0}, {0,1,1,1,1}, {1,0,1,1,1}, {1,1,0,1,1}, {1,1,1,0,1}};
@@ -98,7 +97,6 @@ public class MainActivity extends Activity {
         private long[] x_zobristTurn = new long[2];
         private long x_zobristHash = 0;
         
-        // 扁平化象棋 TT 表
         private long[] x_ttKeys = new long[TT_SIZE];
         private int[] x_ttScores = new int[TT_SIZE];
         private byte[] x_ttDepths = new byte[TT_SIZE];
@@ -106,9 +104,9 @@ public class MainActivity extends Activity {
         private int[] x_ttBestMoves = new int[TT_SIZE];
 
         private int[][] x_depthMoves = new int[60][150]; 
-        private int[][] x_qDepthMoves = new int[60][150]; // 静止搜索专属层级数组
+        private int[][] x_qDepthMoves = new int[60][150]; 
         private int[] x_killerMoves = new int[60];
-        private int[][] x_historyTable = new int[14][90]; // 历史启发表
+        private int[][] x_historyTable = new int[14][90]; 
 
         class XMoveRecord {
             int sr, sc, er, ec; char captured;
@@ -184,6 +182,31 @@ public class MainActivity extends Activity {
                 }
             }
 
+            // --- 防卡死与重入恢复判断：回溯最后一步保证为玩家回合 ---
+            if (currentGameType == 0 && g_gameMode == 0 && g_currentPlayer != g_humanColor && !g_gameOver && !g_moveHistory.isEmpty()) {
+                int[] m = g_moveHistory.remove(g_moveHistory.size()-1);
+                g_board[m[0]][m[1]] = 0; 
+                g_zobristHash ^= g_zobristTable[m[0]][m[1]][m[2]];
+                g_currentPlayer = m[2];
+                g_lastMoveHighlight = g_moveHistory.isEmpty() ? null : new int[]{g_moveHistory.get(g_moveHistory.size()-1)[0], g_moveHistory.get(g_moveHistory.size()-1)[1]};
+            }
+            if (currentGameType == 1 && x_gameMode == 0 && !x_isRedTurn && !x_gameOver && !x_moveHistory.isEmpty()) {
+                XMoveRecord m = x_moveHistory.remove(x_moveHistory.size()-1);
+                char p = x_board[m.er][m.ec];
+                x_zobristHash ^= x_zobristTable[m.er][m.ec][getPieceIndex(p)];
+                if (m.captured != '.') x_zobristHash ^= x_zobristTable[m.er][m.ec][getPieceIndex(m.captured)];
+                x_zobristHash ^= x_zobristTable[m.sr][m.sc][getPieceIndex(p)];
+                x_board[m.sr][m.sc] = p;
+                x_board[m.er][m.ec] = m.captured;
+                x_isRedTurn = !x_isRedTurn;
+                x_aiLastMove = x_moveHistory.isEmpty() ? null : new int[]{
+                    x_moveHistory.get(x_moveHistory.size()-1).sr,
+                    x_moveHistory.get(x_moveHistory.size()-1).sc,
+                    x_moveHistory.get(x_moveHistory.size()-1).er,
+                    x_moveHistory.get(x_moveHistory.size()-1).ec
+                };
+            }
+
             syncGomokuBoard(); syncXiangqiBoard();
             updateStatusMsg(); invalidate();
             
@@ -227,7 +250,7 @@ public class MainActivity extends Activity {
             g_board = new int[G_BOARD_SIZE][G_BOARD_SIZE];
             g_moveHistory.clear();
             g_lastMoveHighlight = null; g_zobristHash = 0; 
-            Arrays.fill(g_ttKeys, 0L); // 清空置换表
+            Arrays.fill(g_ttKeys, 0L); 
             g_aiThinking = false; keepThinking = false; g_gameOver = false;
             g_currentPlayer = 1;
             if (g_gameMode == 0 && triggerAI) g_humanColor = rand.nextBoolean() ? 1 : 2;
@@ -235,11 +258,10 @@ public class MainActivity extends Activity {
             if (triggerAI && g_gameMode == 0 && g_humanColor == 2 && currentGameType == 0) triggerGomokuAiMove();
         }
 
-        // 位操作打包机制，避免对象分配
         private long packGomokuResult(int r, int c, int score) {
             long sr = r & 0xFFL;
             long sc = c & 0xFFL;
-            long ss = score & 0xFFFFFFFFL; // 截断或转换到32位无符号
+            long ss = score & 0xFFFFFFFFL; 
             return (ss << 16) | (sr << 8) | sc;
         }
         private int unpackScoreG(long res) { return (int)(res >> 16); }
@@ -372,7 +394,6 @@ public class MainActivity extends Activity {
             return best;
         }
 
-        // 修改为返回 long, 并加入 PVS 搜索
         private long g_alphaBeta(int depth, int alpha, int beta, int player) {
             if (depth == 0) return packGomokuResult(-1, -1, g_evaluateBoard());
             int aiColor = 3 - g_humanColor;
@@ -396,7 +417,8 @@ public class MainActivity extends Activity {
             int[] moves = g_genMoves(ttR, ttC, aiColor);
             if (moves.length == 0) return packGomokuResult(-1, -1, 0);
 
-            int bestR = -1, bestC = -1, max = Integer.MIN_VALUE+1, min = Integer.MAX_VALUE-1, origAlpha = alpha;
+            int bestR = -1, bestC = -1, max = Integer.MIN_VALUE+1, min = Integer.MAX_VALUE-1;
+            int origAlpha = alpha, origBeta = beta;
             
             for (int i=0; i<moves.length; i++) {
                 if (!keepThinking) break;
@@ -410,13 +432,12 @@ public class MainActivity extends Activity {
                 if (g_checkWin(g_board, r, c, player)) {
                     score = (player==aiColor) ? 1000000+depth : -1000000-depth;
                 } else {
-                    // PVS 主变搜索逻辑
                     if (i == 0) {
                         score = unpackScoreG(g_alphaBeta(depth-1, alpha, beta, 3-player));
                     } else {
                         if (player == aiColor) {
-                            score = unpackScoreG(g_alphaBeta(depth-1, alpha, alpha+1, 3-player)); // 零窗口探测
-                            if (score > alpha && score < beta) score = unpackScoreG(g_alphaBeta(depth-1, alpha, beta, 3-player)); // 失败后重搜
+                            score = unpackScoreG(g_alphaBeta(depth-1, alpha, alpha+1, 3-player)); 
+                            if (score > alpha && score < beta) score = unpackScoreG(g_alphaBeta(depth-1, alpha, beta, 3-player)); 
                         } else {
                             score = unpackScoreG(g_alphaBeta(depth-1, beta-1, beta, 3-player));
                             if (score > alpha && score < beta) score = unpackScoreG(g_alphaBeta(depth-1, alpha, beta, 3-player));
@@ -434,7 +455,14 @@ public class MainActivity extends Activity {
                 }
             }
             int fScore = (player == aiColor) ? max : min;
-            byte flag = (byte)((fScore <= origAlpha) ? 2 : (fScore >= beta ? 1 : 0));
+            byte flag = 0;
+            if (player == aiColor) {
+                if (fScore <= origAlpha) flag = 2; // Upperbound
+                else if (fScore >= origBeta) flag = 1; // Lowerbound
+            } else {
+                if (fScore >= origBeta) flag = 1; // Lowerbound
+                else if (fScore <= origAlpha) flag = 2; // Upperbound
+            }
             
             if (bestR != -1 && keepThinking) {
                 g_ttKeys[ttIdx] = hashKey;
@@ -846,7 +874,7 @@ public class MainActivity extends Activity {
                             x_makeMove(sr, sc, er, ec);
                             if (x_checkGameOver(x_board, x_isRedTurn)) { x_statusMsg = "绝杀！"+(x_isRedTurn?"黑":"红")+"方胜利！"; x_gameOver = true; }
                             else updateStatusMsg();
-                        } else { x_statusMsg = "绝杀！你胜利了！"; x_gameOver = true; }
+                        } else { x_statusMsg = "无棋可走，绝杀！你胜利了！"; x_gameOver = true; }
                         invalidate();
                     });
                 }
@@ -869,11 +897,10 @@ public class MainActivity extends Activity {
             return new int[]{bestMove};
         }
         
-        // ================= 新增：象棋静止搜索 =================
+        // ================= 象棋静止搜索：修复解将与无合法步死胡同漏洞 =================
         private int x_quiesce(int alpha, int beta, boolean isMax, int qDepth) {
             boolean inCheck = x_isInCheck(x_board, isMax);
             
-            // 只有在未被将军时，才用静态评估做截断
             if (!inCheck) {
                 int standPat = x_evalBoard(x_board);
                 if (isMax) {
@@ -892,12 +919,11 @@ public class MainActivity extends Activity {
             for (int r=0; r<10; r++) {
                 for (int c=0; c<9; c++) {
                     if (x_board[r][c]!='.' && x_isRed(x_board[r][c])==isMax) {
-                        int[] tempMoves = x_depthMoves[59]; // 借用最深层数组做临时生成
+                        int[] tempMoves = x_depthMoves[59]; 
                         int n = x_genValidMoves(x_board, r, c, tempMoves);
                         for (int i=0; i<n; i++) {
                             int m = tempMoves[i];
                             int er = (m>>4)&0xF, ec = m&0xF;
-                            // 如果被将军，必须搜索所有走法寻找解将；否则只搜索吃子走法
                             if (inCheck || x_board[er][ec] != '.') {
                                 int score = 10000 + x_pieceValue(x_board[er][ec]) - x_pieceValue(x_board[r][c])/10;
                                 allMoves[moveCount++] = (score << 16) | m;
@@ -908,20 +934,21 @@ public class MainActivity extends Activity {
             }
             
             if (moveCount == 0) {
-                if (inCheck) return isMax ? -100000 : 100000; // 被将死，返回极值
-                return x_evalBoard(x_board); // 没被将但无吃子走法
+                if (inCheck) return isMax ? -100000 + qDepth : 100000 - qDepth; // 被将死，务必返回极值
+                return x_evalBoard(x_board);
             }
 
-            // 简单降序排序 (MVV-LVA)
             for (int i=1; i<moveCount; i++) {
                 int key = allMoves[i]; int j = i - 1;
                 while (j >= 0 && (allMoves[j] >>> 16) < (key >>> 16)) { allMoves[j+1] = allMoves[j]; j--; }
                 allMoves[j+1] = key;
             }
 
+            boolean hasLegal = false;
             for (int i=0; i<moveCount; i++) {
                 int m = allMoves[i] & 0xFFFF;
                 if (!x_isLegalMove(x_board, m, isMax)) continue;
+                hasLegal = true;
 
                 int sr=m>>12, sc=(m>>8)&0xF, er=(m>>4)&0xF, ec=m&0xF;
                 char cap = x_board[er][ec];
@@ -939,6 +966,11 @@ public class MainActivity extends Activity {
                     if (alpha >= beta) return alpha;
                 }
             }
+            
+            // 如果是在被将军的状态下，而且找不到任何合法的解将/吃子方法，判定为死局
+            if (inCheck && !hasLegal) {
+                return isMax ? -100000 + qDepth : 100000 - qDepth;
+            }
             return isMax ? alpha : beta;
         }
 
@@ -948,7 +980,6 @@ public class MainActivity extends Activity {
             boolean inCheck = x_isInCheck(x_board, isMax);
             if (inCheck) depth++;
             
-            // 深度到0，进入静止搜索
             if (depth <= 0) {
                 return x_quiesce(alpha, beta, isMax, 0); 
             }
@@ -971,7 +1002,7 @@ public class MainActivity extends Activity {
             }
 
             int[] allMoves = x_depthMoves[depth]; int moveCount = 0;
-            int[] genMoves = x_depthMoves[59]; // 借用最深层做临时缓存
+            int[] genMoves = x_depthMoves[59]; 
             for (int r=0; r<10; r++) {
                 for (int c=0; c<9; c++) {
                     if (x_board[r][c]!='.' && x_isRed(x_board[r][c])==isMax) {
@@ -982,7 +1013,6 @@ public class MainActivity extends Activity {
             }
             if (moveCount == 0) return isMax ? -100000 : 100000;
 
-            // 启发式打分：包含 MVV-LVA 与历史表
             for(int i=0; i<moveCount; i++) {
                 int m = allMoves[i];
                 int sr=m>>12, sc=(m>>8)&0xF, er=(m>>4)&0xF, ec=m&0xF;
@@ -993,7 +1023,7 @@ public class MainActivity extends Activity {
                     if (m == x_killerMoves[depth]) score = 9000;
                     else score = x_historyTable[getPieceIndex(x_board[sr][sc])][er*9+ec];
                 }
-                allMoves[i] = (score << 16) | m; // 高位装载分数进行极速排序
+                allMoves[i] = (score << 16) | m; 
             }
 
             for (int i=1; i<moveCount; i++) {
@@ -1002,11 +1032,14 @@ public class MainActivity extends Activity {
                 allMoves[j+1] = key;
             }
 
-            int bestVal = isMax ? Integer.MIN_VALUE+1 : Integer.MAX_VALUE-1, flag = 0, bestM = -1, origA = alpha;
+            int bestVal = isMax ? Integer.MIN_VALUE+1 : Integer.MAX_VALUE-1, bestM = -1, origA = alpha, origB = beta;
+            int legalMovesCount = 0;
+            
             for (int i=0; i<moveCount; i++) {
                 if (!keepThinking) break;
-                int m = allMoves[i] & 0xFFFF; // 拆包提取原生走法
+                int m = allMoves[i] & 0xFFFF; 
                 if (!x_isLegalMove(x_board, m, isMax)) continue;
+                legalMovesCount++; // 只有确实合法的步，才能参与PVS主变
 
                 int sr=m>>12, sc=(m>>8)&0xF, er=(m>>4)&0xF, ec=m&0xF;
                 char cap = x_board[er][ec];
@@ -1015,8 +1048,7 @@ public class MainActivity extends Activity {
                 if (cap!='.') nextHash ^= x_zobristTable[er][ec][getPieceIndex(cap)];
 
                 int val;
-                // PVS 象棋主变搜索
-                if (i == 0) {
+                if (legalMovesCount == 1) { // 核心修复：确保第1个合法走法享有完整窗口探测
                     val = x_alphaBeta(depth-1, alpha, beta, !isMax, nextHash, false);
                 } else {
                     if (isMax) {
@@ -1032,18 +1064,30 @@ public class MainActivity extends Activity {
 
                 if (isMax) {
                     if (val > bestVal) { bestVal = val; bestM = m; }
-                    alpha = Math.max(alpha, bestVal); if (alpha >= beta) { flag=1; break; }
+                    alpha = Math.max(alpha, bestVal); if (alpha >= beta) break;
                 } else {
                     if (val < bestVal) { bestVal = val; bestM = m; }
-                    beta = Math.min(beta, bestVal); if (alpha >= beta) { flag=2; break; }
+                    beta = Math.min(beta, bestVal); if (alpha >= beta) break;
                 }
+            }
+
+            if (keepThinking && legalMovesCount == 0) return isMax ? -100000 : 100000;
+
+            // 核心修复：避免TT毒化污染，精准划分Exact / Lowerbound / Upperbound标志位
+            byte finalFlag = 0;
+            if (isMax) {
+                if (bestVal <= origA) finalFlag = 2; // Failed Low -> Upperbound
+                else if (bestVal >= origB) finalFlag = 1; // Failed High -> Lowerbound
+            } else {
+                if (bestVal >= origB) finalFlag = 1; // Failed High -> Lowerbound
+                else if (bestVal <= origA) finalFlag = 2; // Failed Low -> Upperbound
             }
 
             if (keepThinking && bestM != -1) {
                 x_ttKeys[ttIdx] = hash; x_ttDepths[ttIdx] = (byte)depth;
-                x_ttScores[ttIdx] = bestVal; x_ttFlags[ttIdx] = (byte)flag;
+                x_ttScores[ttIdx] = bestVal; x_ttFlags[ttIdx] = finalFlag;
                 x_ttBestMoves[ttIdx] = bestM;
-                if (flag != 0 && depth < 60) {
+                if (finalFlag == 1 && depth < 60) {
                     x_killerMoves[depth] = bestM; 
                     int er = (bestM>>4)&0xF, ec = bestM&0xF;
                     if(x_board[er][ec] == '.') x_historyTable[getPieceIndex(x_board[bestM>>12][(bestM>>8)&0xF])][er*9+ec] += depth * depth;
@@ -1267,7 +1311,7 @@ public class MainActivity extends Activity {
         private void showRulesDialog() {
             String rule = currentGameType == 0 
                 ? "【五子棋规则】\n只要某一方连成5子即为胜利！\n黑棋白棋均受禁手限制（防误触），点错有提示不判负。" 
-                : "【中国象棋规则】\n经典中国象棋规则，当对方被将死或无路可走即为绝杀胜利！\n将帅不能直接面对面（防对视），AI极其聪明，享受被虐的快感吧！";
+                : "【中国象棋规则】\n经典中国象棋规则，当对方被将死或无路可走即为绝杀胜利！\n将帅不能直接面对面（防对视），AI极其聪明，享受被虐的快感吧！\n提示：面对“炮”的隔子将军时，由于炮攻击的是整条线，将帅顺着这条线前后移动是无法解将的哦！";
             new AlertDialog.Builder(getContext()).setTitle("❓ 游戏规则与说明").setMessage(rule).setPositiveButton("我知道了", null).show();
         }
 
