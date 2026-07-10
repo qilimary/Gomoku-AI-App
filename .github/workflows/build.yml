@@ -2668,7 +2668,1760 @@ jobs:
           }
           JAVA
 
-          # 提前检查完整源码，避免文件复制不完整时生成难懂的编译错误。
+                    # ================= 加入横屏斗地主：注册 Activity + 给棋类主界面增加入口 =================
+          python3 <<'PY_PATCH'
+          from pathlib import Path
+          import re
+
+          manifest_path = Path("app/src/main/AndroidManifest.xml")
+          manifest = manifest_path.read_text(encoding="utf-8")
+          manifest = manifest.replace('android:label="五子棋"', 'android:label="棋类与斗地主"')
+          if 'android:name=".PokerActivity"' not in manifest:
+              activity_xml = '''<activity
+              android:name=".PokerActivity"
+              android:exported="false"
+              android:screenOrientation="sensorLandscape"
+              android:configChanges="orientation|screenSize|keyboardHidden" />'''
+              match = re.search(r'(?m)^(\s*)</application>\s*$', manifest)
+              if not match:
+                  raise SystemExit("AndroidManifest.xml 中未找到 </application>。")
+              indent = match.group(1)
+              activity_lines = activity_xml.splitlines()
+              formatted = "\n".join(indent + "    " + line for line in activity_lines)
+              replacement = formatted + "\n" + indent + "</application>"
+              manifest = manifest[:match.start()] + replacement + manifest[match.end():]
+          manifest_path.write_text(manifest, encoding="utf-8")
+
+          gradle_path = Path("app/build.gradle")
+          gradle_text = gradle_path.read_text(encoding="utf-8")
+          gradle_text = gradle_text.replace('versionCode 3', 'versionCode 4')
+          gradle_text = gradle_text.replace('versionName "1.2"', 'versionName "1.3"')
+          gradle_path.write_text(gradle_text, encoding="utf-8")
+
+          main_path = Path("app/src/main/java/com/gomoku/app/MainActivity.java")
+          source = main_path.read_text(encoding="utf-8")
+
+          if "import android.content.Intent;" not in source:
+              source = source.replace(
+                  "import android.content.Context;\n",
+                  "import android.content.Context;\nimport android.content.Intent;\n",
+                  1
+              )
+
+          old_draw = '''            float switchBtnW = w * 0.5f;
+                      float switchBtnH = w * 0.11f;
+                      float switchBtnX = w / 2f - switchBtnW / 2f;
+                      float switchBtnY = row3Y + btnH + w * 0.06f;
+                      String switchText = currentGameType == 0 ? "⇌ 切换至 中国象棋" : "⇌ 切换至 五子棋";
+                      int switchBg = currentGameType == 0 ? COLOR_BROWN : COLOR_SLATE;
+                      drawBtn(canvas, switchText, switchBtnX, switchBtnY,
+                              switchBtnX + switchBtnW, switchBtnY + switchBtnH,
+                              switchBg, Color.WHITE, w * 0.045f);'''
+
+          new_draw = '''            float switchBtnW = w * 0.36f;
+                      float switchBtnH = w * 0.11f;
+                      float switchGap = w * 0.04f;
+                      float switchBtnX = (w - switchBtnW * 2f - switchGap) / 2f;
+                      float switchBtnY = row3Y + btnH + w * 0.06f;
+                      String switchText = currentGameType == 0 ? "⇌ 中国象棋" : "⇌ 五子棋";
+                      int switchBg = currentGameType == 0 ? COLOR_BROWN : COLOR_SLATE;
+                      drawBtn(canvas, switchText, switchBtnX, switchBtnY,
+                              switchBtnX + switchBtnW, switchBtnY + switchBtnH,
+                              switchBg, Color.WHITE, w * 0.040f);
+
+                      float pokerBtnX = switchBtnX + switchBtnW + switchGap;
+                      drawBtn(canvas, "进入 斗地主", pokerBtnX, switchBtnY,
+                              pokerBtnX + switchBtnW, switchBtnY + switchBtnH,
+                              COLOR_ORANGE, Color.WHITE, w * 0.040f);'''
+
+          if old_draw not in source:
+              raise SystemExit("未找到 drawBottomMenu 中原来的切换按钮代码，MainActivity 版本可能已变化。")
+          source = source.replace(old_draw, new_draw, 1)
+
+          old_touch = '''            float switchBtnW = w * 0.5f;
+                      float switchBtnH = w * 0.11f;
+                      float switchBtnX = w / 2f - switchBtnW / 2f;
+                      float switchBtnY = (mode == 0 ? row3Y : row1Y) + btnH + w * 0.06f;
+                      if (checkClick(ex, ey, switchBtnX, switchBtnY,
+                              switchBtnX + switchBtnW, switchBtnY + switchBtnH)) {
+                          if (!g_aiThinking && !x_aiThinking) {
+                              currentGameType = 1 - currentGameType;
+                              updateStatusMsg();
+                              invalidate();
+                          }
+                          return true;
+                      }'''
+
+          new_touch = '''            float switchBtnW = w * 0.36f;
+                      float switchBtnH = w * 0.11f;
+                      float switchGap = w * 0.04f;
+                      float switchBtnX = (w - switchBtnW * 2f - switchGap) / 2f;
+                      float switchBtnY = (mode == 0 ? row3Y : row1Y) + btnH + w * 0.06f;
+                      if (checkClick(ex, ey, switchBtnX, switchBtnY,
+                              switchBtnX + switchBtnW, switchBtnY + switchBtnH)) {
+                          if (!g_aiThinking && !x_aiThinking) {
+                              currentGameType = 1 - currentGameType;
+                              updateStatusMsg();
+                              invalidate();
+                          }
+                          return true;
+                      }
+
+                      float pokerBtnX = switchBtnX + switchBtnW + switchGap;
+                      if (checkClick(ex, ey, pokerBtnX, switchBtnY,
+                              pokerBtnX + switchBtnW, switchBtnY + switchBtnH)) {
+                          if (!g_aiThinking && !x_aiThinking) {
+                              new AlertDialog.Builder(getContext())
+                                      .setTitle("横屏提示")
+                                      .setMessage("斗地主必须在横屏状态下运行。进入后应用会自动切换为横屏，返回棋类游戏时会恢复竖屏。")
+                                      .setPositiveButton("进入斗地主", (dialog, which) -> {
+                                          Context context = getContext();
+                                          context.startActivity(new Intent(context, PokerActivity.class));
+                                      })
+                                      .setNegativeButton("取消", null)
+                                      .show();
+                          }
+                          return true;
+                      }'''
+
+          if old_touch not in source:
+              raise SystemExit("未找到 onTouchEvent 中原来的切换按钮代码，MainActivity 版本可能已变化。")
+          source = source.replace(old_touch, new_touch, 1)
+          main_path.write_text(source, encoding="utf-8")
+          PY_PATCH
+
+          cat > app/src/main/java/com/gomoku/app/PokerActivity.java <<'JAVA_POKER'
+          package com.gomoku.app;
+
+          import android.app.Activity;
+          import android.app.AlertDialog;
+          import android.content.Context;
+          import android.content.pm.ActivityInfo;
+          import android.graphics.Canvas;
+          import android.graphics.Color;
+          import android.graphics.LinearGradient;
+          import android.graphics.Paint;
+          import android.graphics.Path;
+          import android.graphics.RectF;
+          import android.graphics.Shader;
+          import android.os.Bundle;
+          import android.os.Handler;
+          import android.os.Looper;
+          import android.view.MotionEvent;
+          import android.view.View;
+          import android.view.Window;
+          import android.view.WindowManager;
+
+          import java.util.ArrayList;
+          import java.util.Arrays;
+          import java.util.Collections;
+          import java.util.Comparator;
+          import java.util.HashMap;
+          import java.util.HashSet;
+          import java.util.List;
+          import java.util.Locale;
+          import java.util.Map;
+          import java.util.Random;
+          import java.util.Set;
+          import java.util.concurrent.ExecutorService;
+          import java.util.concurrent.Executors;
+          import java.util.concurrent.atomic.AtomicInteger;
+
+          /**
+           * 横屏斗地主。规则、绘制、AI 与状态机全部本地运行，不需要网络权限。
+           */
+          public class PokerActivity extends Activity {
+              private PokerView pokerView;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  requestWindowFeature(Window.FEATURE_NO_TITLE);
+                  getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                          WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                  setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+                  pokerView = new PokerView(this);
+                  setContentView(pokerView);
+              }
+
+              @Override
+              protected void onDestroy() {
+                  if (pokerView != null) pokerView.shutdown();
+                  super.onDestroy();
+              }
+
+              static final class Card {
+                  final int id;
+                  final int rank; // 3..17，16 小王，17 大王
+                  final int suit; // 0♠ 1♥ 2♣ 3♦，王为 4/5
+                  boolean selected;
+
+                  Card(int id, int rank, int suit) {
+                      this.id = id;
+                      this.rank = rank;
+                      this.suit = suit;
+                  }
+              }
+
+              static final class Combo {
+                  static final int INVALID = -1;
+                  static final int SINGLE = 0;
+                  static final int PAIR = 1;
+                  static final int TRIO = 2;
+                  static final int TRIO_SINGLE = 3;
+                  static final int TRIO_PAIR = 4;
+                  static final int STRAIGHT = 5;
+                  static final int PAIR_STRAIGHT = 6;
+                  static final int AIRPLANE = 7;
+                  static final int AIRPLANE_SINGLE = 8;
+                  static final int AIRPLANE_PAIR = 9;
+                  static final int FOUR_TWO_SINGLE = 10;
+                  static final int FOUR_TWO_PAIR = 11;
+                  static final int BOMB = 12;
+                  static final int ROCKET = 13;
+
+                  final int type;
+                  final int mainRank;
+                  final int cardCount;
+                  final int serialLength;
+
+                  Combo(int type, int mainRank, int cardCount, int serialLength) {
+                      this.type = type;
+                      this.mainRank = mainRank;
+                      this.cardCount = cardCount;
+                      this.serialLength = serialLength;
+                  }
+
+                  boolean valid() { return type != INVALID; }
+              }
+
+              static final class Play {
+                  final ArrayList<Card> cards;
+                  final Combo combo;
+                  int score;
+
+                  Play(List<Card> cards, Combo combo) {
+                      this.cards = new ArrayList<>(cards);
+                      this.cards.sort(CARD_COMPARATOR);
+                      this.combo = combo;
+                  }
+              }
+
+              static final Comparator<Card> CARD_COMPARATOR = (a, b) -> {
+                  if (a.rank != b.rank) return Integer.compare(a.rank, b.rank);
+                  return Integer.compare(a.suit, b.suit);
+              };
+
+              static final class DoudizhuRules {
+                  private DoudizhuRules() {}
+
+                  static Combo parse(List<Card> cards) {
+                      if (cards == null || cards.isEmpty()) return new Combo(Combo.INVALID, 0, 0, 0);
+                      int n = cards.size();
+                      int[] counts = new int[18];
+                      int min = 18, max = 0, distinct = 0;
+                      for (Card card : cards) {
+                          if (counts[card.rank]++ == 0) distinct++;
+                          min = Math.min(min, card.rank);
+                          max = Math.max(max, card.rank);
+                      }
+
+                      if (n == 2 && counts[16] == 1 && counts[17] == 1) {
+                          return new Combo(Combo.ROCKET, 17, 2, 1);
+                      }
+                      if (n == 1) return new Combo(Combo.SINGLE, max, 1, 1);
+                      if (n == 2 && distinct == 1) return new Combo(Combo.PAIR, max, 2, 1);
+                      if (n == 3 && distinct == 1) return new Combo(Combo.TRIO, max, 3, 1);
+                      if (n == 4 && distinct == 1) return new Combo(Combo.BOMB, max, 4, 1);
+
+                      int trioRank = -1, pairRank = -1, fourRank = -1;
+                      for (int r = 3; r <= 17; r++) {
+                          if (counts[r] == 4) fourRank = r;
+                          if (counts[r] == 3) trioRank = r;
+                          if (counts[r] == 2) pairRank = r;
+                      }
+                      if (n == 4 && trioRank >= 0) return new Combo(Combo.TRIO_SINGLE, trioRank, 4, 1);
+                      if (n == 5 && trioRank >= 0 && pairRank >= 0) {
+                          return new Combo(Combo.TRIO_PAIR, trioRank, 5, 1);
+                      }
+                      if (n == 6 && fourRank >= 0) {
+                          return new Combo(Combo.FOUR_TWO_SINGLE, fourRank, 6, 1);
+                      }
+                      if (n == 8 && fourRank >= 0) {
+                          int pairs = 0;
+                          for (int r = 3; r <= 17; r++) if (r != fourRank && counts[r] == 2) pairs++;
+                          if (pairs == 2) return new Combo(Combo.FOUR_TWO_PAIR, fourRank, 8, 1);
+                      }
+
+                      if (n >= 5 && max < 15 && distinct == n && max - min + 1 == n) {
+                          return new Combo(Combo.STRAIGHT, max, n, n);
+                      }
+                      if (n >= 6 && n % 2 == 0 && max < 15 && distinct == n / 2 && max - min + 1 == n / 2) {
+                          boolean allPairs = true;
+                          for (int r = min; r <= max; r++) if (counts[r] != 2) { allPairs = false; break; }
+                          if (allPairs) return new Combo(Combo.PAIR_STRAIGHT, max, n, n / 2);
+                      }
+
+                      Combo plane = parseAirplane(counts, n);
+                      return plane != null ? plane : new Combo(Combo.INVALID, 0, n, 0);
+                  }
+
+                  private static Combo parseAirplane(int[] counts, int n) {
+                      for (int start = 3; start <= 14; start++) {
+                          for (int end = start + 1; end <= 14; end++) {
+                              int k = end - start + 1;
+                              boolean body = true;
+                              for (int r = start; r <= end; r++) {
+                                  if (counts[r] < 3) { body = false; break; }
+                              }
+                              if (!body) continue;
+
+                              int remain = n - k * 3;
+                              if (remain == 0) {
+                                  boolean exact = true;
+                                  for (int r = 3; r <= 17; r++) {
+                                      int left = counts[r] - (r >= start && r <= end ? 3 : 0);
+                                      if (left != 0) { exact = false; break; }
+                                  }
+                                  if (exact) return new Combo(Combo.AIRPLANE, end, n, k);
+                              } else if (remain == k) {
+                                  int leftCards = 0;
+                                  boolean ok = true;
+                                  for (int r = 3; r <= 17; r++) {
+                                      int left = counts[r] - (r >= start && r <= end ? 3 : 0);
+                                      if (left < 0 || (r >= start && r <= end && left != 0)) {
+                                          ok = false;
+                                          break;
+                                      }
+                                      leftCards += left;
+                                  }
+                                  if (ok && leftCards == k) {
+                                      return new Combo(Combo.AIRPLANE_SINGLE, end, n, k);
+                                  }
+                              } else if (remain == k * 2) {
+                                  int pairCount = 0;
+                                  boolean ok = true;
+                                  for (int r = 3; r <= 17; r++) {
+                                      int left = counts[r] - (r >= start && r <= end ? 3 : 0);
+                                      if (r >= start && r <= end && left != 0) { ok = false; break; }
+                                      if (left == 0) continue;
+                                      if (left != 2) { ok = false; break; }
+                                      pairCount++;
+                                  }
+                                  if (ok && pairCount == k) {
+                                      return new Combo(Combo.AIRPLANE_PAIR, end, n, k);
+                                  }
+                              }
+                          }
+                      }
+                      return null;
+                  }
+
+                  static boolean beats(Combo play, Combo table) {
+                      if (play == null || table == null || !play.valid()) return false;
+                      if (play.type == Combo.ROCKET) return table.type != Combo.ROCKET;
+                      if (table.type == Combo.ROCKET) return false;
+                      if (play.type == Combo.BOMB) {
+                          return table.type != Combo.BOMB || play.mainRank > table.mainRank;
+                      }
+                      if (table.type == Combo.BOMB) return false;
+                      return play.type == table.type
+                              && play.cardCount == table.cardCount
+                              && play.serialLength == table.serialLength
+                              && play.mainRank > table.mainRank;
+                  }
+
+                  static String typeName(Combo combo) {
+                      if (combo == null) return "";
+                      switch (combo.type) {
+                          case Combo.SINGLE: return "单张";
+                          case Combo.PAIR: return "对子";
+                          case Combo.TRIO: return "三张";
+                          case Combo.TRIO_SINGLE: return "三带一";
+                          case Combo.TRIO_PAIR: return "三带二";
+                          case Combo.STRAIGHT: return "顺子";
+                          case Combo.PAIR_STRAIGHT: return "连对";
+                          case Combo.AIRPLANE: return "飞机";
+                          case Combo.AIRPLANE_SINGLE: return "飞机带单";
+                          case Combo.AIRPLANE_PAIR: return "飞机带对";
+                          case Combo.FOUR_TWO_SINGLE: return "四带二";
+                          case Combo.FOUR_TWO_PAIR: return "四带两对";
+                          case Combo.BOMB: return "炸弹";
+                          case Combo.ROCKET: return "王炸";
+                          default: return "无效牌型";
+                      }
+                  }
+
+                  static ArrayList<Play> generateLegalPlays(List<Card> hand, Combo table, int limit) {
+                      ArrayList<Play> result = new ArrayList<>();
+                      int[] counts = new int[18];
+                      @SuppressWarnings("unchecked")
+                      ArrayList<Card>[] byRank = new ArrayList[18];
+                      for (int r = 0; r < 18; r++) byRank[r] = new ArrayList<>();
+                      for (Card c : hand) { counts[c.rank]++; byRank[c.rank].add(c); }
+                      for (int r = 3; r <= 17; r++) byRank[r].sort(CARD_COMPARATOR);
+
+                      Set<String> dedupe = new HashSet<>();
+                      if (table == null) {
+                          generateAllBase(result, dedupe, counts, byRank, limit);
+                      } else {
+                          generateSameType(result, dedupe, counts, byRank, table, limit);
+                          if (table.type != Combo.ROCKET && table.type != Combo.BOMB) {
+                              for (int r = 3; r <= 15; r++) if (counts[r] == 4) add(result, dedupe, byRank[r], limit);
+                          } else if (table.type == Combo.BOMB) {
+                              for (int r = table.mainRank + 1; r <= 15; r++) if (counts[r] == 4) add(result, dedupe, byRank[r], limit);
+                          }
+                          if (counts[16] == 1 && counts[17] == 1) {
+                              ArrayList<Card> rocket = new ArrayList<>();
+                              rocket.add(byRank[16].get(0)); rocket.add(byRank[17].get(0));
+                              add(result, dedupe, rocket, limit);
+                          }
+                      }
+                      if (table != null) result.removeIf(p -> !beats(p.combo, table));
+                      result.sort((a, b) -> {
+                          if (a.combo.type != b.combo.type) return Integer.compare(a.combo.type, b.combo.type);
+                          if (a.combo.cardCount != b.combo.cardCount) return Integer.compare(b.combo.cardCount, a.combo.cardCount);
+                          return Integer.compare(a.combo.mainRank, b.combo.mainRank);
+                      });
+                      if (result.size() > limit) return new ArrayList<>(result.subList(0, limit));
+                      return result;
+                  }
+
+                  private static void generateAllBase(ArrayList<Play> out, Set<String> seen, int[] counts,
+                                                      ArrayList<Card>[] byRank, int limit) {
+                      for (int r = 3; r <= 17; r++) if (counts[r] >= 1) add(out, seen, byRank[r].subList(0, 1), limit);
+                      for (int r = 3; r <= 15; r++) if (counts[r] >= 2) add(out, seen, byRank[r].subList(0, 2), limit);
+                      for (int r = 3; r <= 15; r++) if (counts[r] >= 3) {
+                          add(out, seen, byRank[r].subList(0, 3), limit);
+                          for (int k = 3; k <= 17; k++) if (k != r && counts[k] >= 1) {
+                              ArrayList<Card> p = take(byRank, r, 3); p.add(byRank[k].get(0)); add(out, seen, p, limit);
+                          }
+                          for (int k = 3; k <= 15; k++) if (k != r && counts[k] >= 2) {
+                              ArrayList<Card> p = take(byRank, r, 3); p.addAll(byRank[k].subList(0, 2)); add(out, seen, p, limit);
+                          }
+                      }
+                      generateStraights(out, seen, counts, byRank, 1, 5, 12, -1, limit);
+                      generateStraights(out, seen, counts, byRank, 2, 3, 10, -1, limit);
+                      generateAirplanes(out, seen, counts, byRank, -1, -1, limit);
+                      generateFourWith(out, seen, counts, byRank, -1, limit);
+                      for (int r = 3; r <= 15; r++) if (counts[r] == 4) add(out, seen, byRank[r], limit);
+                      if (counts[16] == 1 && counts[17] == 1) {
+                          ArrayList<Card> rocket = new ArrayList<>();
+                          rocket.add(byRank[16].get(0)); rocket.add(byRank[17].get(0)); add(out, seen, rocket, limit);
+                      }
+                  }
+
+                  private static void generateSameType(ArrayList<Play> out, Set<String> seen, int[] counts,
+                                                       ArrayList<Card>[] byRank, Combo table, int limit) {
+                      switch (table.type) {
+                          case Combo.SINGLE:
+                              for (int r = table.mainRank + 1; r <= 17; r++) if (counts[r] >= 1) add(out, seen, byRank[r].subList(0, 1), limit);
+                              break;
+                          case Combo.PAIR:
+                              for (int r = table.mainRank + 1; r <= 15; r++) if (counts[r] >= 2) add(out, seen, byRank[r].subList(0, 2), limit);
+                              break;
+                          case Combo.TRIO:
+                              for (int r = table.mainRank + 1; r <= 15; r++) if (counts[r] >= 3) add(out, seen, byRank[r].subList(0, 3), limit);
+                              break;
+                          case Combo.TRIO_SINGLE:
+                              for (int r = table.mainRank + 1; r <= 15; r++) if (counts[r] >= 3) {
+                                  for (int k = 3; k <= 17; k++) if (k != r && counts[k] >= 1) {
+                                      ArrayList<Card> p = take(byRank, r, 3); p.add(byRank[k].get(0)); add(out, seen, p, limit);
+                                  }
+                              }
+                              break;
+                          case Combo.TRIO_PAIR:
+                              for (int r = table.mainRank + 1; r <= 15; r++) if (counts[r] >= 3) {
+                                  for (int k = 3; k <= 15; k++) if (k != r && counts[k] >= 2) {
+                                      ArrayList<Card> p = take(byRank, r, 3); p.addAll(byRank[k].subList(0, 2)); add(out, seen, p, limit);
+                                  }
+                              }
+                              break;
+                          case Combo.STRAIGHT:
+                              generateStraights(out, seen, counts, byRank, 1, table.serialLength,
+                                      table.serialLength, table.mainRank, limit);
+                              break;
+                          case Combo.PAIR_STRAIGHT:
+                              generateStraights(out, seen, counts, byRank, 2, table.serialLength,
+                                      table.serialLength, table.mainRank, limit);
+                              break;
+                          case Combo.AIRPLANE:
+                          case Combo.AIRPLANE_SINGLE:
+                          case Combo.AIRPLANE_PAIR:
+                              generateAirplanes(out, seen, counts, byRank, table.type, table.mainRank, limit);
+                              break;
+                          case Combo.FOUR_TWO_SINGLE:
+                          case Combo.FOUR_TWO_PAIR:
+                              generateFourWith(out, seen, counts, byRank, table.type, limit);
+                              out.removeIf(p -> p.combo.mainRank <= table.mainRank);
+                              break;
+                          case Combo.BOMB:
+                              for (int r = table.mainRank + 1; r <= 15; r++) if (counts[r] == 4) add(out, seen, byRank[r], limit);
+                              break;
+                          default:
+                              break;
+                      }
+                  }
+
+                  private static void generateStraights(ArrayList<Play> out, Set<String> seen, int[] counts,
+                                                        ArrayList<Card>[] byRank, int copies,
+                                                        int minLen, int maxLen, int minMainExclusive, int limit) {
+                      for (int start = 3; start <= 14; start++) {
+                          for (int len = minLen; len <= maxLen && start + len - 1 <= 14; len++) {
+                              int end = start + len - 1;
+                              if (end <= minMainExclusive) continue;
+                              boolean ok = true;
+                              for (int r = start; r <= end; r++) if (counts[r] < copies) { ok = false; break; }
+                              if (!ok) continue;
+                              ArrayList<Card> p = new ArrayList<>();
+                              for (int r = start; r <= end; r++) p.addAll(byRank[r].subList(0, copies));
+                              add(out, seen, p, limit);
+                          }
+                      }
+                  }
+
+                  private static void generateAirplanes(ArrayList<Play> out, Set<String> seen, int[] counts,
+                                                        ArrayList<Card>[] byRank, int requiredType,
+                                                        int minMainExclusive, int limit) {
+                      for (int start = 3; start <= 13; start++) {
+                          for (int end = start + 1; end <= 14; end++) {
+                              int k = end - start + 1;
+                              if (end <= minMainExclusive) continue;
+                              boolean ok = true;
+                              for (int r = start; r <= end; r++) if (counts[r] < 3) { ok = false; break; }
+                              if (!ok) continue;
+                              ArrayList<Card> body = new ArrayList<>();
+                              for (int r = start; r <= end; r++) body.addAll(byRank[r].subList(0, 3));
+                              if (requiredType == -1 || requiredType == Combo.AIRPLANE) add(out, seen, body, limit);
+
+                              ArrayList<Card> loose = new ArrayList<>();
+                              ArrayList<Integer> pairRanks = new ArrayList<>();
+                              for (int r = 3; r <= 17; r++) {
+                                  if (r >= start && r <= end) continue; // 翅膀不得取自飞机主体牌点
+                                  int left = counts[r];
+                                  for (int i = 0; i < left; i++) loose.add(byRank[r].get(i));
+                                  if (left >= 2 && r <= 15) pairRanks.add(r);
+                              }
+                              loose.sort(CARD_COMPARATOR);
+                              if ((requiredType == -1 || requiredType == Combo.AIRPLANE_SINGLE) && loose.size() >= k) {
+                                  addWingVariants(out, seen, body, loose, k, limit);
+                              }
+                              if ((requiredType == -1 || requiredType == Combo.AIRPLANE_PAIR) && pairRanks.size() >= k) {
+                                  choosePairWings(out, seen, body, byRank, counts, start, end,
+                                          pairRanks, 0, k, new ArrayList<>(), limit);
+                              }
+                          }
+                      }
+                  }
+
+                  private static void addWingVariants(ArrayList<Play> out, Set<String> seen, ArrayList<Card> body,
+                                                      ArrayList<Card> loose, int k, int limit) {
+                      ArrayList<Card> low = new ArrayList<>(body);
+                      low.addAll(loose.subList(0, k));
+                      add(out, seen, low, limit);
+
+                      ArrayList<Card> high = new ArrayList<>(body);
+                      high.addAll(loose.subList(loose.size() - k, loose.size()));
+                      add(out, seen, high, limit);
+
+                      ArrayList<Card> preservePairs = new ArrayList<>();
+                      int[] local = new int[18];
+                      for (Card c : loose) local[c.rank]++;
+                      for (Card c : loose) if (local[c.rank] == 1) preservePairs.add(c);
+                      for (Card c : loose) if (!preservePairs.contains(c)) preservePairs.add(c);
+                      if (preservePairs.size() >= k) {
+                          ArrayList<Card> p = new ArrayList<>(body);
+                          p.addAll(preservePairs.subList(0, k));
+                          add(out, seen, p, limit);
+                      }
+                  }
+
+                  private static void choosePairWings(ArrayList<Play> out, Set<String> seen, ArrayList<Card> body,
+                                                      ArrayList<Card>[] byRank, int[] counts, int planeStart, int planeEnd,
+                                                      ArrayList<Integer> ranks, int index, int need,
+                                                      ArrayList<Integer> chosen, int limit) {
+                      if (out.size() >= limit) return;
+                      if (chosen.size() == need) {
+                          ArrayList<Card> p = new ArrayList<>(body);
+                          for (int rank : chosen) {
+                              int used = rank >= planeStart && rank <= planeEnd ? 3 : 0;
+                              p.add(byRank[rank].get(used));
+                              p.add(byRank[rank].get(used + 1));
+                          }
+                          add(out, seen, p, limit);
+                          return;
+                      }
+                      for (int i = index; i <= ranks.size() - (need - chosen.size()); i++) {
+                          chosen.add(ranks.get(i));
+                          choosePairWings(out, seen, body, byRank, counts, planeStart, planeEnd,
+                                  ranks, i + 1, need, chosen, limit);
+                          chosen.remove(chosen.size() - 1);
+                      }
+                  }
+
+                  private static void generateFourWith(ArrayList<Play> out, Set<String> seen, int[] counts,
+                                                       ArrayList<Card>[] byRank, int requiredType, int limit) {
+                      for (int four = 3; four <= 15; four++) {
+                          if (counts[four] != 4) continue;
+                          ArrayList<Card> rest = new ArrayList<>();
+                          ArrayList<Integer> pairRanks = new ArrayList<>();
+                          for (int r = 3; r <= 17; r++) if (r != four) {
+                              rest.addAll(byRank[r]);
+                              if (r <= 15 && counts[r] >= 2) pairRanks.add(r);
+                          }
+                          rest.sort(CARD_COMPARATOR);
+                          if ((requiredType == -1 || requiredType == Combo.FOUR_TWO_SINGLE) && rest.size() >= 2) {
+                              for (int i = 0; i < rest.size(); i++) {
+                                  for (int j = i + 1; j < rest.size(); j++) {
+                                      ArrayList<Card> p = take(byRank, four, 4);
+                                      p.add(rest.get(i)); p.add(rest.get(j));
+                                      add(out, seen, p, limit);
+                                      if (out.size() >= limit) return;
+                                  }
+                              }
+                          }
+                          if ((requiredType == -1 || requiredType == Combo.FOUR_TWO_PAIR) && pairRanks.size() >= 2) {
+                              for (int i = 0; i < pairRanks.size(); i++) {
+                                  for (int j = i + 1; j < pairRanks.size(); j++) {
+                                      ArrayList<Card> p = take(byRank, four, 4);
+                                      p.addAll(byRank[pairRanks.get(i)].subList(0, 2));
+                                      p.addAll(byRank[pairRanks.get(j)].subList(0, 2));
+                                      add(out, seen, p, limit);
+                                  }
+                              }
+                          }
+                      }
+                  }
+
+                  private static ArrayList<Card> take(ArrayList<Card>[] byRank, int rank, int amount) {
+                      return new ArrayList<>(byRank[rank].subList(0, amount));
+                  }
+
+                  private static void add(ArrayList<Play> out, Set<String> seen, List<Card> cards, int limit) {
+                      if (out.size() >= limit || cards == null || cards.isEmpty()) return;
+                      ArrayList<Card> copy = new ArrayList<>(cards);
+                      copy.sort(CARD_COMPARATOR);
+                      Combo combo = parse(copy);
+                      if (!combo.valid()) return;
+                      StringBuilder key = new StringBuilder();
+                      key.append(combo.type).append(':');
+                      for (Card c : copy) key.append(c.rank).append(',');
+                      if (!seen.add(key.toString())) return;
+                      out.add(new Play(copy, combo));
+                  }
+              }
+
+              static final class AiEngine {
+                  static final int EASY = 0;
+                  static final int NORMAL = 1;
+                  static final int HARD = 2;
+                  static final int MASTER = 3;
+
+                  private final Random random = new Random();
+
+                  long budgetMillis(int difficulty) {
+                      switch (difficulty) {
+                          case EASY: return 350L;
+                          case NORMAL: return 850L;
+                          case HARD: return 1_900L;
+                          default: return 3_600L;
+                      }
+                  }
+
+                  int bid(List<Card> hand, int currentBid, int difficulty) {
+                      int[] counts = countRanks(hand);
+                      double score = 0.0;
+                      for (int r = 3; r <= 15; r++) {
+                          if (counts[r] == 4) score += 3.4;
+                          if (counts[r] == 3) score += r >= 12 ? 1.2 : 0.5;
+                      }
+                      if (counts[17] == 1) score += 3.0;
+                      if (counts[16] == 1) score += 2.1;
+                      score += counts[15] * 1.25 + counts[14] * 0.55;
+                      int turns = estimateTurns(hand);
+                      score += Math.max(0, 9 - turns) * 0.45;
+                      if (difficulty == EASY) score += random.nextDouble() * 2.0 - 1.0;
+                      int target = score >= 7.3 ? 3 : score >= 4.5 ? 2 : score >= 2.4 ? 1 : 0;
+                      return target > currentBid ? target : 0;
+                  }
+
+                  Play choosePlay(int player, List<Card> hand, Combo table, int lastPlayer,
+                                  int landlord, int[] remainingCounts, List<Card> played,
+                                  int difficulty, long deadlineNanos) {
+                      ArrayList<Play> legal = DoudizhuRules.generateLegalPlays(hand, table,
+                              difficulty >= HARD ? 520 : 260);
+                      if (legal.isEmpty()) return null;
+
+                      boolean teammateLed = player != landlord && lastPlayer >= 0
+                              && lastPlayer != landlord && lastPlayer != player;
+                      int enemy = player == landlord ? nextOpponentWithFewest(player, remainingCounts)
+                              : landlord;
+                      int enemyRemain = remainingCounts[enemy];
+
+                      if (difficulty == EASY) {
+                          legal.sort(Comparator.comparingInt(a -> a.combo.mainRank));
+                          int range = Math.min(3, legal.size());
+                          return legal.get(random.nextInt(range));
+                      }
+
+                      int sampleCount = difficulty == MASTER ? 68 : difficulty == HARD ? 28 : 0;
+                      Map<String, Double> beatProbability = sampleCount > 0
+                              ? estimateBeatProbabilities(player, hand, legal, remainingCounts, played,
+                              sampleCount, deadlineNanos)
+                              : Collections.emptyMap();
+
+                      Play best = null;
+                      int bestScore = Integer.MIN_VALUE;
+                      for (Play play : legal) {
+                          if (System.nanoTime() >= deadlineNanos) break;
+                          ArrayList<Card> remain = new ArrayList<>(hand);
+                          removeCards(remain, play.cards);
+                          int turns = estimateTurns(remain);
+                          int score = -turns * 180 + play.cards.size() * 7;
+                          if (remain.isEmpty()) score += 1_000_000;
+
+                          int controlCost = controlCost(play);
+                          score -= controlCost;
+                          if (play.combo.type == Combo.BOMB) score -= 250;
+                          if (play.combo.type == Combo.ROCKET) score -= 420;
+
+                          if (table != null) {
+                              score -= play.combo.mainRank * 3;
+                              if (enemyRemain <= 2 && !teammateLed) score += play.combo.mainRank * 18;
+                          } else {
+                              if (play.combo.type == Combo.STRAIGHT || play.combo.type == Combo.PAIR_STRAIGHT
+                                      || play.combo.type == Combo.AIRPLANE || play.combo.type == Combo.AIRPLANE_SINGLE
+                                      || play.combo.type == Combo.AIRPLANE_PAIR) score += 70;
+                          }
+
+                          if (teammateLed) {
+                              score -= 180;
+                              if (remainingCounts[lastPlayer] <= 2) score -= 500;
+                              if (play.cards.size() == hand.size()) score += 1_000_000;
+                          }
+
+                          if (!beatProbability.isEmpty()) {
+                              double probability = beatProbability.getOrDefault(signature(play), 0.5);
+                              if (player == landlord || !teammateLed) {
+                                  score += (int) ((1.0 - probability) * 180.0);
+                              } else {
+                                  score -= (int) ((1.0 - probability) * 130.0);
+                              }
+                          }
+
+                          if (difficulty == NORMAL) score += random.nextInt(15);
+                          play.score = score;
+                          if (score > bestScore) { bestScore = score; best = play; }
+                      }
+
+                      if (teammateLed && best != null && table != null && !best.cards.isEmpty()) {
+                          if (remainingCounts[lastPlayer] <= 3 && best.cards.size() < hand.size()) return null;
+                          if (best.combo.mainRank >= 14 && enemyRemain > 2 && best.cards.size() < hand.size()) return null;
+                      }
+                      return best != null ? best : legal.get(0);
+                  }
+
+                  Play chooseHint(List<Card> hand, Combo table) {
+                      ArrayList<Play> legal = DoudizhuRules.generateLegalPlays(hand, table, 320);
+                      if (legal.isEmpty()) return null;
+                      Play best = null;
+                      int bestScore = Integer.MIN_VALUE;
+                      for (Play p : legal) {
+                          ArrayList<Card> remain = new ArrayList<>(hand);
+                          removeCards(remain, p.cards);
+                          int score = -estimateTurns(remain) * 150 - p.combo.mainRank * 2 + p.cards.size() * 6;
+                          if (remain.isEmpty()) score += 999_999;
+                          if (p.combo.type == Combo.BOMB || p.combo.type == Combo.ROCKET) score -= 250;
+                          if (score > bestScore) { bestScore = score; best = p; }
+                      }
+                      return best;
+                  }
+
+                  private Map<String, Double> estimateBeatProbabilities(int player, List<Card> hand,
+                                                                         List<Play> plays, int[] remainingCounts,
+                                                                         List<Card> played, int samples,
+                                                                         long deadlineNanos) {
+                      HashMap<String, Integer> beat = new HashMap<>();
+                      HashMap<String, Integer> total = new HashMap<>();
+                      ArrayList<Card> unknown = fullDeck();
+                      removeCardsById(unknown, hand);
+                      removeCardsById(unknown, played);
+                      int leftId = (player + 1) % 3;
+                      int rightId = (player + 2) % 3;
+                      int leftCount = remainingCounts[leftId];
+                      int rightCount = remainingCounts[rightId];
+                      int possible = Math.min(unknown.size(), leftCount + rightCount);
+                      if (possible <= 0) return Collections.emptyMap();
+
+                      for (int s = 0; s < samples && System.nanoTime() < deadlineNanos; s++) {
+                          Collections.shuffle(unknown, random);
+                          ArrayList<Card> left = new ArrayList<>(unknown.subList(0, Math.min(leftCount, unknown.size())));
+                          int from = Math.min(leftCount, unknown.size());
+                          int to = Math.min(from + rightCount, unknown.size());
+                          ArrayList<Card> right = new ArrayList<>(unknown.subList(from, to));
+                          for (Play p : plays) {
+                              String key = signature(p);
+                              boolean can = canBeat(left, p.combo) || canBeat(right, p.combo);
+                              total.put(key, total.getOrDefault(key, 0) + 1);
+                              if (can) beat.put(key, beat.getOrDefault(key, 0) + 1);
+                          }
+                      }
+                      HashMap<String, Double> result = new HashMap<>();
+                      for (Map.Entry<String, Integer> e : total.entrySet()) {
+                          int t = e.getValue();
+                          result.put(e.getKey(), t == 0 ? 0.5 : beat.getOrDefault(e.getKey(), 0) / (double) t);
+                      }
+                      return result;
+                  }
+
+
+                  private boolean canBeat(List<Card> hand, Combo table) {
+                      int[] counts = countRanks(hand);
+                      if (counts[16] > 0 && counts[17] > 0 && table.type != Combo.ROCKET) return true;
+                      if (table.type != Combo.ROCKET) {
+                          int bombStart = table.type == Combo.BOMB ? table.mainRank + 1 : 3;
+                          for (int r = bombStart; r <= 15; r++) if (counts[r] == 4) return true;
+                      }
+                      switch (table.type) {
+                          case Combo.SINGLE:
+                              for (int r = table.mainRank + 1; r <= 17; r++) if (counts[r] > 0) return true;
+                              return false;
+                          case Combo.PAIR:
+                              for (int r = table.mainRank + 1; r <= 15; r++) if (counts[r] >= 2) return true;
+                              return false;
+                          case Combo.TRIO:
+                              for (int r = table.mainRank + 1; r <= 15; r++) if (counts[r] >= 3) return true;
+                              return false;
+                          case Combo.TRIO_SINGLE:
+                              for (int r = table.mainRank + 1; r <= 15; r++) if (counts[r] >= 3) {
+                                  int other = hand.size() - counts[r];
+                                  if (other >= 1) return true;
+                              }
+                              return false;
+                          case Combo.TRIO_PAIR:
+                              for (int r = table.mainRank + 1; r <= 15; r++) if (counts[r] >= 3) {
+                                  for (int k = 3; k <= 15; k++) if (k != r && counts[k] >= 2) return true;
+                              }
+                              return false;
+                          case Combo.STRAIGHT:
+                              return hasSerial(counts, 1, table.serialLength, table.mainRank);
+                          case Combo.PAIR_STRAIGHT:
+                              return hasSerial(counts, 2, table.serialLength, table.mainRank);
+                          case Combo.AIRPLANE:
+                          case Combo.AIRPLANE_SINGLE:
+                          case Combo.AIRPLANE_PAIR:
+                              for (int end = table.mainRank + 1; end <= 14; end++) {
+                                  int start = end - table.serialLength + 1;
+                                  if (start < 3) continue;
+                                  boolean body = true;
+                                  for (int r = start; r <= end; r++) if (counts[r] < 3) { body = false; break; }
+                                  if (!body) continue;
+                                  if (table.type == Combo.AIRPLANE) return true;
+                                  if (table.type == Combo.AIRPLANE_SINGLE) {
+                                      int wings = 0;
+                                      for (int r = 3; r <= 17; r++) if (r < start || r > end) wings += counts[r];
+                                      if (wings >= table.serialLength) return true;
+                                  } else {
+                                      int pairs = 0;
+                                      for (int r = 3; r <= 15; r++) if ((r < start || r > end) && counts[r] >= 2) pairs++;
+                                      if (pairs >= table.serialLength) return true;
+                                  }
+                              }
+                              return false;
+                          case Combo.FOUR_TWO_SINGLE:
+                              for (int r = table.mainRank + 1; r <= 15; r++) if (counts[r] == 4 && hand.size() - 4 >= 2) return true;
+                              return false;
+                          case Combo.FOUR_TWO_PAIR:
+                              for (int r = table.mainRank + 1; r <= 15; r++) if (counts[r] == 4) {
+                                  int pairs = 0;
+                                  for (int k = 3; k <= 15; k++) if (k != r && counts[k] >= 2) pairs++;
+                                  if (pairs >= 2) return true;
+                              }
+                              return false;
+                          case Combo.BOMB:
+                          case Combo.ROCKET:
+                          default:
+                              return false;
+                      }
+                  }
+
+                  private boolean hasSerial(int[] counts, int copies, int length, int minMainExclusive) {
+                      for (int end = minMainExclusive + 1; end <= 14; end++) {
+                          int start = end - length + 1;
+                          if (start < 3) continue;
+                          boolean ok = true;
+                          for (int r = start; r <= end; r++) if (counts[r] < copies) { ok = false; break; }
+                          if (ok) return true;
+                      }
+                      return false;
+                  }
+
+                  private int estimateTurns(List<Card> cards) {
+                      if (cards.isEmpty()) return 0;
+                      int[] counts = countRanks(cards);
+                      int best = greedyTurns(counts, true);
+                      best = Math.min(best, greedyTurns(counts, false));
+                      return best;
+                  }
+
+                  private int greedyTurns(int[] original, boolean preferSequences) {
+                      int[] c = original.clone();
+                      int turns = 0;
+                      if (c[16] > 0 && c[17] > 0) { c[16]--; c[17]--; turns++; }
+                      if (preferSequences) {
+                          turns += removeAirplanes(c);
+                          turns += removePairStraights(c);
+                          turns += removeStraights(c);
+                      }
+                      for (int r = 3; r <= 15; r++) if (c[r] == 4) { c[r] = 0; turns++; }
+                      turns += removeAirplanes(c);
+                      if (!preferSequences) {
+                          turns += removePairStraights(c);
+                          turns += removeStraights(c);
+                      }
+                      for (int r = 3; r <= 17; r++) {
+                          if (c[r] >= 3) { c[r] -= 3; turns++; }
+                      }
+                      int singles = 0, pairs = 0;
+                      for (int r = 3; r <= 17; r++) {
+                          pairs += c[r] / 2;
+                          singles += c[r] % 2;
+                      }
+                      turns += pairs + singles;
+                      return Math.max(1, turns);
+                  }
+
+                  private int removeStraights(int[] c) {
+                      int turns = 0;
+                      boolean changed;
+                      do {
+                          changed = false;
+                          int bestStart = -1, bestLen = 0;
+                          for (int start = 3; start <= 10; start++) {
+                              int len = 0;
+                              while (start + len <= 14 && c[start + len] > 0) len++;
+                              if (len >= 5 && len > bestLen) { bestStart = start; bestLen = len; }
+                          }
+                          if (bestStart >= 0) {
+                              for (int r = bestStart; r < bestStart + bestLen; r++) c[r]--;
+                              turns++; changed = true;
+                          }
+                      } while (changed);
+                      return turns;
+                  }
+
+                  private int removePairStraights(int[] c) {
+                      int turns = 0;
+                      boolean changed;
+                      do {
+                          changed = false;
+                          int bestStart = -1, bestLen = 0;
+                          for (int start = 3; start <= 12; start++) {
+                              int len = 0;
+                              while (start + len <= 14 && c[start + len] >= 2) len++;
+                              if (len >= 3 && len > bestLen) { bestStart = start; bestLen = len; }
+                          }
+                          if (bestStart >= 0) {
+                              for (int r = bestStart; r < bestStart + bestLen; r++) c[r] -= 2;
+                              turns++; changed = true;
+                          }
+                      } while (changed);
+                      return turns;
+                  }
+
+                  private int removeAirplanes(int[] c) {
+                      int turns = 0;
+                      boolean changed;
+                      do {
+                          changed = false;
+                          int bestStart = -1, bestLen = 0;
+                          for (int start = 3; start <= 13; start++) {
+                              int len = 0;
+                              while (start + len <= 14 && c[start + len] >= 3) len++;
+                              if (len >= 2 && len > bestLen) { bestStart = start; bestLen = len; }
+                          }
+                          if (bestStart >= 0) {
+                              for (int r = bestStart; r < bestStart + bestLen; r++) c[r] -= 3;
+                              turns++; changed = true;
+                          }
+                      } while (changed);
+                      return turns;
+                  }
+
+                  private int controlCost(Play play) {
+                      int cost = play.combo.mainRank * 2;
+                      if (play.combo.mainRank >= 15) cost += 45;
+                      if (play.combo.type == Combo.BOMB) cost += 120;
+                      if (play.combo.type == Combo.ROCKET) cost += 200;
+                      return cost;
+                  }
+
+                  private int nextOpponentWithFewest(int player, int[] remains) {
+                      int a = (player + 1) % 3, b = (player + 2) % 3;
+                      return remains[a] <= remains[b] ? a : b;
+                  }
+
+                  private static int[] countRanks(List<Card> cards) {
+                      int[] counts = new int[18];
+                      for (Card c : cards) counts[c.rank]++;
+                      return counts;
+                  }
+
+                  private static String signature(Play p) {
+                      StringBuilder sb = new StringBuilder();
+                      sb.append(p.combo.type).append(':').append(p.combo.mainRank).append(':');
+                      for (Card c : p.cards) sb.append(c.rank).append(',');
+                      return sb.toString();
+                  }
+
+                  private static ArrayList<Card> fullDeck() {
+                      ArrayList<Card> deck = new ArrayList<>(54);
+                      int id = 0;
+                      for (int rank = 3; rank <= 15; rank++) {
+                          for (int suit = 0; suit < 4; suit++) deck.add(new Card(id++, rank, suit));
+                      }
+                      deck.add(new Card(id++, 16, 4));
+                      deck.add(new Card(id, 17, 5));
+                      return deck;
+                  }
+
+                  private static void removeCards(List<Card> target, List<Card> cards) {
+                      for (Card c : cards) {
+                          for (int i = 0; i < target.size(); i++) {
+                              if (target.get(i).id == c.id) { target.remove(i); break; }
+                          }
+                      }
+                  }
+
+                  private static void removeCardsById(List<Card> target, List<Card> cards) {
+                      removeCards(target, cards);
+                  }
+              }
+
+              final class PokerView extends View {
+                  private static final int STATE_MENU = 0;
+                  private static final int STATE_BIDDING = 1;
+                  private static final int STATE_PLAYING = 2;
+                  private static final int STATE_GAME_OVER = 3;
+
+                  private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                  private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+                  private final Random random = new Random();
+                  private final AiEngine ai = new AiEngine();
+                  private final ExecutorService executor = Executors.newSingleThreadExecutor();
+                  private final Handler handler = new Handler(Looper.getMainLooper());
+                  private final AtomicInteger aiToken = new AtomicInteger();
+
+                  @SuppressWarnings("unchecked")
+                  private final ArrayList<Card>[] hands = new ArrayList[]{new ArrayList<>(), new ArrayList<>(), new ArrayList<>()};
+                  private final ArrayList<Card> bottomCards = new ArrayList<>();
+                  private final ArrayList<Card> tableCards = new ArrayList<>();
+                  private final ArrayList<Card> playedCards = new ArrayList<>();
+                  private final ArrayList<RectF> humanCardRects = new ArrayList<>();
+                  private final ArrayList<Card> humanRectCards = new ArrayList<>();
+
+                  private int state = STATE_MENU;
+                  private int difficulty = AiEngine.NORMAL;
+                  private int landlord = -1;
+                  private int currentTurn = 0;
+                  private int firstBidder = 0;
+                  private int bidTurns = 0;
+                  private int highestBid = 0;
+                  private int highestBidder = -1;
+                  private int lastPlayPlayer = -1;
+                  private int passCount = 0;
+                  private Combo tableCombo;
+                  private String message = "请选择难度开始游戏";
+                  private boolean aiThinking = false;
+                  private boolean showCounter = true;
+                  private long comboShowUntil = 0L;
+                  private String comboShowText = "";
+
+                  private float width, height, density;
+                  private float cardW, cardH, handTop;
+                  private RectF playBtn = new RectF();
+                  private RectF passBtn = new RectF();
+                  private RectF hintBtn = new RectF();
+                  private RectF counterBtn = new RectF();
+                  private RectF backBtn = new RectF();
+                  private final RectF[] bidBtns = {new RectF(), new RectF(), new RectF(), new RectF()};
+                  private final RectF[] menuBtns = {new RectF(), new RectF(), new RectF(), new RectF()};
+                  private RectF rulesBtn = new RectF();
+
+                  PokerView(Context context) {
+                      super(context);
+                      density = getResources().getDisplayMetrics().density;
+                      paint.setTypeface(android.graphics.Typeface.create("sans", android.graphics.Typeface.NORMAL));
+                      stroke.setStyle(Paint.Style.STROKE);
+                      stroke.setStrokeWidth(dp(2));
+                      setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+                  }
+
+                  void shutdown() {
+                      aiToken.incrementAndGet();
+                      handler.removeCallbacksAndMessages(null);
+                      executor.shutdownNow();
+                  }
+
+                  @Override
+                  protected void onDraw(Canvas canvas) {
+                      super.onDraw(canvas);
+                      width = getWidth();
+                      height = getHeight();
+                      cardW = Math.min(width * 0.067f, height * 0.155f);
+                      cardH = cardW * 1.42f;
+                      drawTableBackground(canvas);
+                      if (state == STATE_MENU) drawMenu(canvas);
+                      else drawGame(canvas);
+                  }
+
+                  private void drawTableBackground(Canvas canvas) {
+                      LinearGradient gradient = new LinearGradient(0, 0, 0, height,
+                              0xFF176C54, 0xFF083E35, Shader.TileMode.CLAMP);
+                      paint.setShader(gradient);
+                      canvas.drawRect(0, 0, width, height, paint);
+                      paint.setShader(null);
+                      paint.setColor(0x18000000);
+                      for (int i = 0; i < 18; i++) {
+                          float x = (i * 193 % Math.max(1, (int) width));
+                          float y = (i * 97 % Math.max(1, (int) height));
+                          canvas.drawCircle(x, y, dp(55 + i * 3), paint);
+                      }
+                      paint.setStyle(Paint.Style.STROKE);
+                      paint.setStrokeWidth(dp(3));
+                      paint.setColor(0x55D6B25E);
+                      canvas.drawRoundRect(dp(12), dp(12), width - dp(12), height - dp(12),
+                              dp(22), dp(22), paint);
+                      paint.setStyle(Paint.Style.FILL);
+                  }
+
+                  private void drawMenu(Canvas canvas) {
+                      drawCenteredText(canvas, "欢乐斗地主 · 本地智能版", width / 2f, height * 0.19f,
+                              height * 0.072f, 0xFFFFE6A0, true);
+                      drawCenteredText(canvas, "四档 AI · 标准牌型 · 记牌器 · 全程离线", width / 2f,
+                              height * 0.28f, height * 0.036f, 0xFFE9FFF7, false);
+
+                      float bw = width * 0.18f, bh = height * 0.105f;
+                      float gap = width * 0.025f;
+                      float total = bw * 4 + gap * 3;
+                      float sx = (width - total) / 2f;
+                      float y = height * 0.43f;
+                      String[] names = {"简单", "普通", "困难", "大师"};
+                      int[] colors = {0xFF7CCF86, 0xFF65B5E8, 0xFFF3B84B, 0xFFE76D54};
+                      for (int i = 0; i < 4; i++) {
+                          menuBtns[i].set(sx + i * (bw + gap), y, sx + i * (bw + gap) + bw, y + bh);
+                          drawButton(canvas, menuBtns[i], names[i], colors[i], Color.WHITE,
+                                  height * 0.038f, difficulty == i);
+                      }
+                      RectF start = new RectF(width * 0.36f, height * 0.62f,
+                              width * 0.64f, height * 0.74f);
+                      drawButton(canvas, start, "开始斗地主", 0xFFFFC43D, 0xFF332300,
+                              height * 0.045f, false);
+                      rulesBtn.set(width * 0.82f, height * 0.05f, width * 0.96f, height * 0.13f);
+                      drawButton(canvas, rulesBtn, "规则说明", 0x884B6B62, Color.WHITE,
+                              height * 0.029f, false);
+                      backBtn.set(width * 0.04f, height * 0.05f, width * 0.16f, height * 0.13f);
+                      drawButton(canvas, backBtn, "返回", 0x884B6B62, Color.WHITE,
+                              height * 0.029f, false);
+                      drawCenteredText(canvas, "进入后保持横屏；竖屏空间不足，无法正常操作。", width / 2f,
+                              height * 0.86f, height * 0.031f, 0xFFD7EEE8, false);
+                  }
+
+                  private void drawGame(Canvas canvas) {
+                      drawTopBar(canvas);
+                      drawOpponents(canvas);
+                      drawBottomCards(canvas);
+                      drawTableCards(canvas);
+                      drawHumanHand(canvas);
+                      drawActionButtons(canvas);
+                      drawMessage(canvas);
+                      if (showCounter) drawCounter(canvas);
+                      if (System.currentTimeMillis() < comboShowUntil) {
+                          drawCenteredText(canvas, comboShowText, width / 2f, height * 0.26f,
+                                  height * 0.055f, 0xFFFFD85A, true);
+                          postInvalidateDelayed(60L);
+                      }
+                  }
+
+                  private void drawTopBar(Canvas canvas) {
+                      RectF panel = new RectF(width * 0.29f, height * 0.025f,
+                              width * 0.71f, height * 0.105f);
+                      paint.setColor(0x66000000);
+                      canvas.drawRoundRect(panel, dp(14), dp(14), paint);
+                      String diff = new String[]{"简单", "普通", "困难", "大师"}[difficulty];
+                      String role = landlord < 0 ? "叫分阶段" : (landlord == 0 ? "你是地主" : "你是农民");
+                      drawCenteredText(canvas, "难度：" + diff + "　·　" + role,
+                              panel.centerX(), panel.centerY(), height * 0.031f, Color.WHITE, false);
+                      backBtn.set(width * 0.015f, height * 0.025f, width * 0.105f, height * 0.105f);
+                      drawButton(canvas, backBtn, "退出", 0xAA9D3F3F, Color.WHITE, height * 0.027f, false);
+                      rulesBtn.set(width * 0.895f, height * 0.025f, width * 0.985f, height * 0.105f);
+                      drawButton(canvas, rulesBtn, "说明", 0x884B6B62, Color.WHITE, height * 0.027f, false);
+                  }
+
+                  private void drawOpponents(Canvas canvas) {
+                      float y = height * 0.19f;
+                      drawOpponent(canvas, 1, width * 0.15f, y, false);
+                      drawOpponent(canvas, 2, width * 0.85f, y, true);
+                  }
+
+                  private void drawOpponent(Canvas canvas, int player, float cx, float cy, boolean right) {
+                      boolean isLandlord = landlord == player;
+                      drawCenteredText(canvas, (isLandlord ? "★ " : "") + "AI " + player,
+                              cx, cy - height * 0.065f, height * 0.033f,
+                              isLandlord ? 0xFFFFD85A : Color.WHITE, true);
+                      drawCenteredText(canvas, "剩 " + hands[player].size() + " 张",
+                              cx, cy - height * 0.025f, height * 0.027f, 0xFFDDEFEA, false);
+                      int show = Math.min(10, hands[player].size());
+                      float smallW = cardW * 0.42f, smallH = cardH * 0.42f;
+                      float spacing = smallW * 0.34f;
+                      float start = cx - (show - 1) * spacing / 2f - smallW / 2f;
+                      for (int i = 0; i < show; i++) drawCardBack(canvas, start + i * spacing, cy, smallW, smallH);
+                      if (currentTurn == player && state == STATE_PLAYING) {
+                          paint.setColor(0xFFFFD85A);
+                          canvas.drawCircle(right ? cx + width * 0.085f : cx - width * 0.085f,
+                                  cy + smallH * 0.45f, dp(6), paint);
+                      }
+                  }
+
+                  private void drawBottomCards(Canvas canvas) {
+                      float smallW = cardW * 0.56f, smallH = cardH * 0.56f;
+                      float sx = width / 2f - (smallW * 3 + dp(12) * 2) / 2f;
+                      for (int i = 0; i < bottomCards.size(); i++) {
+                          Card c = bottomCards.get(i);
+                          if (landlord < 0) drawCardBack(canvas, sx + i * (smallW + dp(12)), height * 0.12f, smallW, smallH);
+                          else drawCard(canvas, c, sx + i * (smallW + dp(12)), height * 0.12f, smallW, smallH, false);
+                      }
+                  }
+
+                  private void drawTableCards(Canvas canvas) {
+                      if (tableCards.isEmpty()) return;
+                      float w2 = cardW * 0.78f, h2 = cardH * 0.78f;
+                      float spacing = Math.min(w2 * 0.42f, width * 0.31f / Math.max(1, tableCards.size()));
+                      float total = w2 + spacing * (tableCards.size() - 1);
+                      float sx = width / 2f - total / 2f;
+                      float y = height * 0.31f;
+                      for (int i = 0; i < tableCards.size(); i++) {
+                          drawCard(canvas, tableCards.get(i), sx + i * spacing, y, w2, h2, false);
+                      }
+                      drawCenteredText(canvas, DoudizhuRules.typeName(tableCombo), width / 2f,
+                              y + h2 + height * 0.037f, height * 0.027f, 0xFFFFE6A0, false);
+                  }
+
+                  private void drawHumanHand(Canvas canvas) {
+                      humanCardRects.clear();
+                      humanRectCards.clear();
+                      ArrayList<Card> hand = hands[0];
+                      hand.sort(CARD_COMPARATOR);
+                      int n = hand.size();
+                      if (n == 0) return;
+                      float maxSpan = width * 0.73f;
+                      float spacing = n <= 1 ? 0 : Math.min(cardW * 0.50f, (maxSpan - cardW) / (n - 1));
+                      float total = cardW + spacing * (n - 1);
+                      float sx = width / 2f - total / 2f;
+                      handTop = height - cardH - height * 0.035f;
+                      for (int i = 0; i < n; i++) {
+                          Card card = hand.get(i);
+                          float y = handTop - (card.selected ? height * 0.048f : 0f);
+                          RectF rect = drawCard(canvas, card, sx + i * spacing, y, cardW, cardH,
+                                  landlord == 0 && state == STATE_PLAYING && currentTurn == 0);
+                          humanCardRects.add(rect);
+                          humanRectCards.add(card);
+                      }
+                      if (landlord == 0) {
+                          drawCenteredText(canvas, "★ 地主", width * 0.12f, handTop + cardH * 0.35f,
+                                  height * 0.031f, 0xFFFFD85A, true);
+                      }
+                  }
+
+                  private void drawActionButtons(Canvas canvas) {
+                      float bw = width * 0.105f, bh = height * 0.072f, gap = width * 0.014f;
+                      float y = height * 0.71f;
+                      if (state == STATE_BIDDING && currentTurn == 0) {
+                          float total = bw * 4 + gap * 3;
+                          float sx = width / 2f - total / 2f;
+                          String[] labels = {"不叫", "1分", "2分", "3分"};
+                          int[] colors = {0xFF777777, 0xFF6FA8DC, 0xFFE7B64B, 0xFFE8664F};
+                          for (int i = 0; i < 4; i++) {
+                              bidBtns[i].set(sx + i * (bw + gap), y, sx + i * (bw + gap) + bw, y + bh);
+                              boolean disabled = i > 0 && i <= highestBid;
+                              drawButton(canvas, bidBtns[i], labels[i], disabled ? 0xFF666666 : colors[i],
+                                      disabled ? 0xFFAAAAAA : Color.WHITE, height * 0.026f, false);
+                          }
+                          return;
+                      }
+                      if (state != STATE_PLAYING || currentTurn != 0) return;
+                      float total = bw * 4 + gap * 3;
+                      float sx = width / 2f - total / 2f;
+                      passBtn.set(sx, y, sx + bw, y + bh);
+                      hintBtn.set(sx + bw + gap, y, sx + bw * 2 + gap, y + bh);
+                      playBtn.set(sx + (bw + gap) * 2, y, sx + bw * 3 + gap * 2, y + bh);
+                      counterBtn.set(sx + (bw + gap) * 3, y, sx + bw * 4 + gap * 3, y + bh);
+                      drawButton(canvas, passBtn, tableCombo == null ? "必须出" : "不出",
+                              tableCombo == null ? 0xFF555555 : 0xFF777777, Color.WHITE, height * 0.026f, false);
+                      drawButton(canvas, hintBtn, "提示", 0xFF6FA8DC, Color.WHITE, height * 0.026f, false);
+                      drawButton(canvas, playBtn, "出牌", 0xFFFFC43D, 0xFF332300, height * 0.026f, false);
+                      drawButton(canvas, counterBtn, showCounter ? "隐藏记牌" : "记牌器",
+                              0xFF5C8F7A, Color.WHITE, height * 0.024f, false);
+                  }
+
+                  private void drawMessage(Canvas canvas) {
+                      String text = aiThinking ? message + "（AI思考中）" : message;
+                      drawCenteredText(canvas, text, width / 2f, height * 0.64f,
+                              height * 0.031f, 0xFFFFF2C8, true);
+                  }
+
+                  private void drawCounter(Canvas canvas) {
+                      int[] remain = new int[18];
+                      Arrays.fill(remain, 4);
+                      remain[16] = 1; remain[17] = 1;
+                      for (Card c : playedCards) remain[c.rank]--;
+                      for (Card c : hands[0]) remain[c.rank]--;
+                      StringBuilder sb = new StringBuilder("记牌  ");
+                      for (int r = 17; r >= 3; r--) {
+                          if (r < 10) continue;
+                          sb.append(rankText(r)).append('×').append(Math.max(0, remain[r])).append("  ");
+                      }
+                      RectF panel = new RectF(width * 0.015f, height * 0.88f,
+                              width * 0.41f, height * 0.965f);
+                      paint.setColor(0x7700130F);
+                      canvas.drawRoundRect(panel, dp(10), dp(10), paint);
+                      drawCenteredText(canvas, sb.toString(), panel.centerX(), panel.centerY(),
+                              height * 0.022f, 0xFFA8F0C8, false);
+                  }
+
+                  private RectF drawCard(Canvas canvas, Card card, float x, float y, float cw, float ch, boolean glow) {
+                      RectF shadow = new RectF(x + dp(4), y + dp(5), x + cw + dp(4), y + ch + dp(5));
+                      paint.setColor(0x55000000);
+                      canvas.drawRoundRect(shadow, dp(8), dp(8), paint);
+                      RectF rect = new RectF(x, y, x + cw, y + ch);
+                      paint.setColor(card.selected ? 0xFFFFF4C7 : 0xFFFAFAF7);
+                      canvas.drawRoundRect(rect, dp(8), dp(8), paint);
+                      stroke.setColor(glow ? 0xFFFFD85A : 0xFFB8B8B8);
+                      stroke.setStrokeWidth(glow ? dp(3) : dp(1));
+                      canvas.drawRoundRect(rect, dp(8), dp(8), stroke);
+
+                      int color = (card.suit == 1 || card.suit == 3 || card.rank == 17)
+                              ? 0xFFD62F2F : 0xFF202020;
+                      String rank = rankText(card.rank);
+                      String suit = suitText(card);
+                      paint.setColor(color);
+                      paint.setTextAlign(Paint.Align.LEFT);
+                      paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                      paint.setTextSize(cw * (rank.length() > 1 ? 0.27f : 0.35f));
+                      canvas.drawText(rank, x + cw * 0.10f, y + ch * 0.26f, paint);
+                      paint.setTypeface(android.graphics.Typeface.DEFAULT);
+                      paint.setTextSize(cw * 0.30f);
+                      canvas.drawText(suit, x + cw * 0.11f, y + ch * 0.48f, paint);
+                      paint.setTextAlign(Paint.Align.CENTER);
+                      paint.setTextSize(cw * (card.rank >= 16 ? 0.31f : 0.46f));
+                      canvas.drawText(card.rank >= 16 ? rank : suit,
+                              x + cw * 0.56f, y + ch * 0.70f, paint);
+                      return rect;
+                  }
+
+                  private void drawCardBack(Canvas canvas, float x, float y, float cw, float ch) {
+                      RectF rect = new RectF(x, y, x + cw, y + ch);
+                      paint.setColor(0xFF194F8A);
+                      canvas.drawRoundRect(rect, dp(6), dp(6), paint);
+                      stroke.setColor(Color.WHITE);
+                      stroke.setStrokeWidth(dp(1.5f));
+                      canvas.drawRoundRect(rect, dp(6), dp(6), stroke);
+                      RectF inner = new RectF(x + cw * 0.12f, y + ch * 0.10f,
+                              x + cw * 0.88f, y + ch * 0.90f);
+                      stroke.setColor(0xFF86BCEB);
+                      canvas.drawRoundRect(inner, dp(4), dp(4), stroke);
+                      paint.setColor(0xFF86BCEB);
+                      Path diamond = new Path();
+                      diamond.moveTo(x + cw * 0.5f, y + ch * 0.28f);
+                      diamond.lineTo(x + cw * 0.72f, y + ch * 0.5f);
+                      diamond.lineTo(x + cw * 0.5f, y + ch * 0.72f);
+                      diamond.lineTo(x + cw * 0.28f, y + ch * 0.5f);
+                      diamond.close();
+                      canvas.drawPath(diamond, paint);
+                  }
+
+                  private void drawButton(Canvas canvas, RectF rect, String text, int bg, int fg,
+                                          float size, boolean selected) {
+                      paint.setColor(bg);
+                      paint.setShadowLayer(dp(6), 0, dp(3), 0x55000000);
+                      canvas.drawRoundRect(rect, dp(12), dp(12), paint);
+                      paint.clearShadowLayer();
+                      if (selected) {
+                          stroke.setColor(0xFFFFF0A0);
+                          stroke.setStrokeWidth(dp(4));
+                          canvas.drawRoundRect(rect, dp(12), dp(12), stroke);
+                      }
+                      drawCenteredText(canvas, text, rect.centerX(), rect.centerY(), size, fg, true);
+                  }
+
+                  private void drawCenteredText(Canvas canvas, String text, float cx, float cy,
+                                                float size, int color, boolean bold) {
+                      paint.setColor(color);
+                      paint.setTextSize(size);
+                      paint.setTextAlign(Paint.Align.CENTER);
+                      paint.setTypeface(android.graphics.Typeface.create("sans",
+                              bold ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL));
+                      Paint.FontMetrics fm = paint.getFontMetrics();
+                      canvas.drawText(text, cx, cy - (fm.ascent + fm.descent) / 2f, paint);
+                  }
+
+                  @Override
+                  public boolean onTouchEvent(MotionEvent event) {
+                      if (event.getAction() != MotionEvent.ACTION_DOWN) return true;
+                      float x = event.getX(), y = event.getY();
+                      if (state == STATE_MENU) return handleMenuTouch(x, y);
+                      if (backBtn.contains(x, y)) {
+                          confirmExit();
+                          return true;
+                      }
+                      if (rulesBtn.contains(x, y)) {
+                          showRules();
+                          return true;
+                      }
+                      if (aiThinking) return true;
+
+                      if (state == STATE_BIDDING && currentTurn == 0) {
+                          for (int i = 0; i < 4; i++) {
+                              if (bidBtns[i].contains(x, y)) {
+                                  if (i > 0 && i <= highestBid) {
+                                      message = "必须叫出比当前更高的分数";
+                                      invalidate();
+                                      return true;
+                                  }
+                                  handleBid(0, i);
+                                  return true;
+                              }
+                          }
+                      }
+                      if (state == STATE_PLAYING && currentTurn == 0) {
+                          for (int i = humanCardRects.size() - 1; i >= 0; i--) {
+                              if (humanCardRects.get(i).contains(x, y)) {
+                                  Card card = humanRectCards.get(i);
+                                  card.selected = !card.selected;
+                                  invalidate();
+                                  return true;
+                              }
+                          }
+                          if (counterBtn.contains(x, y)) {
+                              showCounter = !showCounter;
+                              invalidate();
+                              return true;
+                          }
+                          if (hintBtn.contains(x, y)) {
+                              applyHint();
+                              return true;
+                          }
+                          if (passBtn.contains(x, y)) {
+                              if (tableCombo == null) message = "你拥有牌权，必须出牌";
+                              else passTurn(0);
+                              invalidate();
+                              return true;
+                          }
+                          if (playBtn.contains(x, y)) {
+                              playSelected();
+                              return true;
+                          }
+                      }
+                      return true;
+                  }
+
+                  private boolean handleMenuTouch(float x, float y) {
+                      if (backBtn.contains(x, y)) {
+                          finish();
+                          return true;
+                      }
+                      if (rulesBtn.contains(x, y)) {
+                          showRules();
+                          return true;
+                      }
+                      for (int i = 0; i < 4; i++) {
+                          if (menuBtns[i].contains(x, y)) {
+                              difficulty = i;
+                              invalidate();
+                              return true;
+                          }
+                      }
+                      RectF start = new RectF(width * 0.36f, height * 0.62f,
+                              width * 0.64f, height * 0.74f);
+                      if (start.contains(x, y)) {
+                          startNewGame();
+                          return true;
+                      }
+                      return true;
+                  }
+
+                  private void startNewGame() {
+                      aiToken.incrementAndGet();
+                      for (ArrayList<Card> hand : hands) hand.clear();
+                      bottomCards.clear(); tableCards.clear(); playedCards.clear();
+                      ArrayList<Card> deck = AiEngine.fullDeck();
+                      Collections.shuffle(deck, random);
+                      for (int i = 0; i < 51; i++) hands[i % 3].add(deck.get(i));
+                      bottomCards.addAll(deck.subList(51, 54));
+                      for (ArrayList<Card> hand : hands) hand.sort(CARD_COMPARATOR);
+                      landlord = -1;
+                      firstBidder = random.nextInt(3);
+                      currentTurn = firstBidder;
+                      bidTurns = 0;
+                      highestBid = 0;
+                      highestBidder = -1;
+                      lastPlayPlayer = -1;
+                      passCount = 0;
+                      tableCombo = null;
+                      state = STATE_BIDDING;
+                      message = playerName(currentTurn) + "开始叫分";
+                      clearSelection();
+                      invalidate();
+                      maybeScheduleAi();
+                  }
+
+                  private void handleBid(int player, int bid) {
+                      if (state != STATE_BIDDING || player != currentTurn) return;
+                      bidTurns++;
+                      if (bid > highestBid) {
+                          highestBid = bid;
+                          highestBidder = player;
+                      }
+                      message = playerName(player) + (bid == 0 ? "不叫" : "叫 " + bid + " 分");
+                      if (bid == 3 || bidTurns >= 3) {
+                          if (highestBidder < 0) {
+                              message = "无人叫地主，重新发牌";
+                              handler.postDelayed(this::startNewGame, 650L);
+                              invalidate();
+                              return;
+                          }
+                          landlord = highestBidder;
+                          hands[landlord].addAll(bottomCards);
+                          hands[landlord].sort(CARD_COMPARATOR);
+                          currentTurn = landlord;
+                          state = STATE_PLAYING;
+                          message = playerName(landlord) + "成为地主，先出牌";
+                          invalidate();
+                          maybeScheduleAi();
+                          return;
+                      }
+                      currentTurn = (currentTurn + 1) % 3;
+                      invalidate();
+                      maybeScheduleAi();
+                  }
+
+                  private void maybeScheduleAi() {
+                      if ((state != STATE_BIDDING && state != STATE_PLAYING) || currentTurn == 0 || aiThinking) return;
+                      int token = aiToken.incrementAndGet();
+                      aiThinking = true;
+                      message = playerName(currentTurn) + (state == STATE_BIDDING ? "正在叫分" : "正在思考");
+                      invalidate();
+                      handler.postDelayed(() -> {
+                          if (token != aiToken.get() || currentTurn == 0) { aiThinking = false; return; }
+                          final int acting = currentTurn;
+                          if (state == STATE_BIDDING) {
+                              executor.execute(() -> {
+                                  int bid = ai.bid(new ArrayList<>(hands[acting]), highestBid, difficulty);
+                                  handler.post(() -> {
+                                      if (token != aiToken.get() || state != STATE_BIDDING || currentTurn != acting) return;
+                                      aiThinking = false;
+                                      handleBid(acting, bid);
+                                  });
+                              });
+                          } else {
+                              long deadline = System.nanoTime() + ai.budgetMillis(difficulty) * 1_000_000L;
+                              ArrayList<Card> own = new ArrayList<>(hands[acting]);
+                              ArrayList<Card> played = new ArrayList<>(playedCards);
+                              int[] remains = {hands[0].size(), hands[1].size(), hands[2].size()};
+                              Combo tableCopy = tableCombo == null ? null
+                                      : new Combo(tableCombo.type, tableCombo.mainRank,
+                                      tableCombo.cardCount, tableCombo.serialLength);
+                              int last = lastPlayPlayer;
+                              int ll = landlord;
+                              executor.execute(() -> {
+                                  Play play = ai.choosePlay(acting, own, tableCopy, last, ll,
+                                          remains, played, difficulty, deadline);
+                                  handler.post(() -> {
+                                      if (token != aiToken.get() || state != STATE_PLAYING || currentTurn != acting) return;
+                                      aiThinking = false;
+                                      if (play == null) passTurn(acting);
+                                      else playCards(acting, play.cards, play.combo);
+                                  });
+                              });
+                          }
+                      }, difficulty == AiEngine.EASY ? 280L : 430L);
+                  }
+
+                  private void playSelected() {
+                      ArrayList<Card> selected = new ArrayList<>();
+                      for (Card c : hands[0]) if (c.selected) selected.add(c);
+                      if (selected.isEmpty()) {
+                          message = "请先选择要出的牌";
+                          invalidate();
+                          return;
+                      }
+                      Combo combo = DoudizhuRules.parse(selected);
+                      if (!combo.valid()) {
+                          message = "牌型不符合斗地主规则";
+                          invalidate();
+                          return;
+                      }
+                      if (tableCombo != null && !DoudizhuRules.beats(combo, tableCombo)) {
+                          message = "这手牌压不过桌面牌型";
+                          invalidate();
+                          return;
+                      }
+                      playCards(0, selected, combo);
+                  }
+
+                  private void playCards(int player, List<Card> cards, Combo combo) {
+                      for (Card c : cards) {
+                          for (int i = 0; i < hands[player].size(); i++) {
+                              if (hands[player].get(i).id == c.id) {
+                                  Card removed = hands[player].remove(i);
+                                  removed.selected = false;
+                                  break;
+                              }
+                          }
+                      }
+                      tableCards.clear();
+                      tableCards.addAll(cards);
+                      tableCards.sort(CARD_COMPARATOR);
+                      tableCombo = combo;
+                      lastPlayPlayer = player;
+                      passCount = 0;
+                      playedCards.addAll(cards);
+                      comboShowText = DoudizhuRules.typeName(combo);
+                      comboShowUntil = System.currentTimeMillis() + 1_100L;
+                      message = playerName(player) + "出了" + comboShowText;
+                      clearSelection();
+                      if (hands[player].isEmpty()) {
+                          state = STATE_GAME_OVER;
+                          boolean humanWin = (player == 0) || (player != landlord && landlord != 0);
+                          message = humanWin ? "恭喜，你赢了！" : "本局失败，再来一局吧";
+                          aiToken.incrementAndGet();
+                          invalidate();
+                          handler.postDelayed(this::showGameOverDialog, 700L);
+                          return;
+                      }
+                      currentTurn = (player + 1) % 3;
+                      invalidate();
+                      maybeScheduleAi();
+                  }
+
+                  private void passTurn(int player) {
+                      if (tableCombo == null) return;
+                      passCount++;
+                      message = playerName(player) + "选择不出";
+                      if (passCount >= 2) {
+                          int leader = lastPlayPlayer;
+                          tableCards.clear();
+                          tableCombo = null;
+                          passCount = 0;
+                          currentTurn = leader;
+                          message = playerName(leader) + "重新获得牌权";
+                      } else {
+                          currentTurn = (player + 1) % 3;
+                      }
+                      clearSelection();
+                      invalidate();
+                      maybeScheduleAi();
+                  }
+
+                  private void applyHint() {
+                      Play hint = ai.chooseHint(hands[0], tableCombo);
+                      if (hint == null) {
+                          message = "没有可以压过的牌";
+                          invalidate();
+                          return;
+                      }
+                      clearSelection();
+                      for (Card h : hint.cards) {
+                          for (Card c : hands[0]) if (c.id == h.id) { c.selected = true; break; }
+                      }
+                      message = "提示：" + DoudizhuRules.typeName(hint.combo);
+                      invalidate();
+                  }
+
+                  private void clearSelection() {
+                      for (Card c : hands[0]) c.selected = false;
+                  }
+
+                  private void showRules() {
+                      String text = "【基本规则】\n"
+                              + "三人斗地主，共54张牌。地主20张，两个农民各17张；地主先出，依次压牌。两名农民任意一人先出完即农民获胜。\n\n"
+                              + "【支持牌型】\n"
+                              + "单张、对子、三张、三带一、三带二、顺子、连对、飞机、飞机带单、飞机带对、四带二、四带两对、炸弹、王炸。2和大小王不能进入顺子、连对或飞机主体。\n\n"
+                              + "【四档AI】\n"
+                              + "简单：快速基础决策；普通：牌型与剩余手数评估；困难：加入未知牌抽样和控牌判断；大师：扩大抽样、强化农民配合和残局封锁。\n"
+                              + "最大思考时间约为0.35秒、0.85秒、1.9秒、3.6秒，达到上限会使用当前最优结果。\n\n"
+                              + "【操作】\n"
+                              + "点击手牌抬起/放下，点击出牌；提示可自动选牌；记牌器统计尚未出现在你视野中的高价值牌。游戏必须横屏。";
+                      new AlertDialog.Builder(PokerActivity.this)
+                              .setTitle("斗地主规则与AI说明")
+                              .setMessage(text)
+                              .setPositiveButton("知道了", null)
+                              .show();
+                  }
+
+                  private void showGameOverDialog() {
+                      if (isFinishing() || state != STATE_GAME_OVER) return;
+                      new AlertDialog.Builder(PokerActivity.this)
+                              .setTitle("本局结束")
+                              .setMessage(message)
+                              .setPositiveButton("再来一局", (d, w) -> startNewGame())
+                              .setNegativeButton("返回菜单", (d, w) -> {
+                                  state = STATE_MENU;
+                                  message = "请选择难度开始游戏";
+                                  invalidate();
+                              })
+                              .show();
+                  }
+
+                  private void confirmExit() {
+                      new AlertDialog.Builder(PokerActivity.this)
+                              .setTitle("退出斗地主")
+                              .setMessage("当前牌局不会保存，确定返回棋类游戏吗？")
+                              .setPositiveButton("确定", (d, w) -> finish())
+                              .setNegativeButton("继续游戏", null)
+                              .show();
+                  }
+
+                  private String playerName(int player) {
+                      return player == 0 ? "你" : "AI " + player;
+                  }
+
+                  private String rankText(int rank) {
+                      if (rank >= 3 && rank <= 10) return String.valueOf(rank);
+                      if (rank == 11) return "J";
+                      if (rank == 12) return "Q";
+                      if (rank == 13) return "K";
+                      if (rank == 14) return "A";
+                      if (rank == 15) return "2";
+                      if (rank == 16) return "小王";
+                      return "大王";
+                  }
+
+                  private String suitText(Card card) {
+                      if (card.rank >= 16) return card.rank == 17 ? "★" : "☆";
+                      switch (card.suit) {
+                          case 0: return "♠";
+                          case 1: return "♥";
+                          case 2: return "♣";
+                          default: return "♦";
+                      }
+                  }
+
+                  private float dp(float v) { return v * density; }
+              }
+          }
+
+          JAVA_POKER
+
+          # 斗地主源码完整性检查
+          test -s app/src/main/java/com/gomoku/app/PokerActivity.java
+          grep -q 'public class PokerActivity extends Activity' app/src/main/java/com/gomoku/app/PokerActivity.java
+          grep -q 'static final int MASTER = 3' app/src/main/java/com/gomoku/app/PokerActivity.java
+          grep -q 'SCREEN_ORIENTATION_SENSOR_LANDSCAPE' app/src/main/java/com/gomoku/app/PokerActivity.java
+          grep -q 'android:name=".PokerActivity"' app/src/main/AndroidManifest.xml
+          
+          
+          
           test -s app/src/main/java/com/gomoku/app/MainActivity.java
           grep -q '^package com\.gomoku\.app;' app/src/main/java/com/gomoku/app/MainActivity.java
           grep -q 'public class MainActivity extends Activity' app/src/main/java/com/gomoku/app/MainActivity.java
