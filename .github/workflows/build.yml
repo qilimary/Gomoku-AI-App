@@ -957,10 +957,10 @@ jobs:
                   }
 
                   private long g_timeBudgetMillis(int depth) {
-                      if (depth <= 4) return 900L;
-                      if (depth <= 7) return 2_800L;
-                      if (depth <= 11) return 7_000L;
-                      return Math.min(18_000L, 7_000L + (depth - 11L) * 700L);
+                      if (depth <= 4) return 3_500L;
+                      if (depth <= 7) return 14_800L;
+                      if (depth <= 11) return 20_000L;
+                      return Math.min(35_000L, 12_000L + (depth - 11L) * 3_000L);
                   }
 
                   private void triggerGomokuAiMove() {
@@ -2007,10 +2007,10 @@ jobs:
                   }
 
                   private long x_timeBudgetMillis(int depth) {
-                      if (depth <= 3) return 800L;
-                      if (depth <= 6) return 2_600L;
-                      if (depth <= 9) return 7_000L;
-                      return Math.min(20_000L, 7_000L + (depth - 9L) * 850L);
+                      if (depth <= 3) return 3_800L;
+                      if (depth <= 6) return 10_600L;
+                      if (depth <= 9) return 20_000L;
+                      return Math.min(38_000L, 18_000L + (depth - 9L) * 5_500L);
                   }
 
                   private void triggerXiangqiAiMove() {
