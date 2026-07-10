@@ -1,79 +1,120 @@
 name: Build Android APK
-on: [push, pull_request]
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: temurin
+          java-version: "17"
 
-      - name: Auto Generate Android Configs
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Generate complete Android project
+        shell: bash
         run: |
-          # 自动生成顶级 build.gradle
-          cat << 'EOF' > build.gradle
-          buildscript {
+          set -euo pipefail
+
+          # 每次构建都从这个工作流重新生成完整 Android 项目。
+          # 因此仓库只保留 .github/workflows/build.yml 也可以正常构建。
+          rm -rf app
+          rm -f settings.gradle build.gradle gradle.properties
+          mkdir -p app/src/main/java/com/gomoku/app
+          mkdir -p app/src/main/res/drawable
+
+          cat > settings.gradle <<'GRADLE'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
               repositories {
                   google()
                   mavenCentral()
               }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:8.2.2'
-              }
           }
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
+          rootProject.name = "Gomoku-AI-App"
+          include ':app'
+          GRADLE
+
+          cat > build.gradle <<'GRADLE'
+          plugins {
+              id 'com.android.application' version '8.5.2' apply false
           }
-          EOF
-          
-          # 自动生成 settings.gradle
-          echo "include ':app'" > settings.gradle
-          
-          # 自动生成 app/build.gradle
-          mkdir -p app
-          cat << 'EOF' > app/build.gradle
-          plugins { id 'com.android.application' }
+          GRADLE
+
+          cat > gradle.properties <<'GRADLE'
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          org.gradle.parallel=true
+          org.gradle.caching=true
+          android.useAndroidX=false
+          android.nonTransitiveRClass=true
+          GRADLE
+
+          cat > app/build.gradle <<'GRADLE'
+          plugins {
+              id 'com.android.application'
+          }
+
           android {
               namespace 'com.gomoku.app'
               compileSdk 34
+
               defaultConfig {
                   applicationId "com.gomoku.app"
                   minSdk 26
                   targetSdk 34
-                  versionCode 1
-                  versionName "1.0"
+                  versionCode 3
+                  versionName "1.2"
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
               }
           }
-          EOF
-          
-          # 生成应用精美图标 (修复了 Vector Drawable 无法直接使用 circle 的问题)
-          mkdir -p app/src/main/res/drawable
-          cat << 'EOF' > app/src/main/res/drawable/ic_launcher.xml
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#E3C498" android:pathData="M10,10 h88 v88 h-88 z" />
-              <path android:strokeColor="#000000" android:strokeWidth="1.5" android:pathData="M20,20 h68 M20,33.6 h68 M20,47.2 h68 M20,60.8 h68 M20,74.4 h68 M20,88 h68 M20,20 v68 M33.6,20 v68 M47.2,20 v68 M60.8,20 v68 M74.4,20 v68 M88,20 v68" />
-              <!-- 使用贝塞尔曲线 path 完美绘制黑白棋子 -->
-              <path android:fillColor="#000000" android:pathData="M42.7,47.2 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" />
-              <path android:fillColor="#FFFFFF" android:pathData="M56.3,60.8 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" />
-          </vector>
-          EOF
-          
-          # 自动生成 AndroidManifest.xml，挂载图标和新名字
-          mkdir -p app/src/main
-          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          GRADLE
+
+          cat > app/src/main/AndroidManifest.xml <<'XML'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <application android:label="五子棋" android:icon="@drawable/ic_launcher" android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
-                  <activity android:name="com.gomoku.app.MainActivity" android:exported="true">
+              <application
+                  android:allowBackup="true"
+                  android:icon="@drawable/ic_launcher"
+                  android:label="五子棋"
+                  android:supportsRtl="true"
+                  android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:screenOrientation="portrait">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />
@@ -81,16 +122,2566 @@ jobs:
                   </activity>
               </application>
           </manifest>
-          EOF
+          XML
 
-      - name: Setup Gradle Wrapper
-        run: gradle wrapper --gradle-version 8.5
+          cat > app/src/main/res/drawable/ic_launcher.xml <<'XML'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path android:fillColor="#E3C498" android:pathData="M10,10 h88 v88 h-88 z" />
+              <path android:strokeColor="#000000" android:strokeWidth="1.5"
+                  android:pathData="M20,20 h68 M20,33.6 h68 M20,47.2 h68 M20,60.8 h68 M20,74.4 h68 M20,88 h68 M20,20 v68 M33.6,20 v68 M47.2,20 v68 M60.8,20 v68 M74.4,20 v68 M88,20 v68" />
+              <path android:fillColor="#000000"
+                  android:pathData="M42.7,47.2 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" />
+              <path android:fillColor="#FFFFFF"
+                  android:pathData="M56.3,60.8 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" />
+          </vector>
+          XML
 
-      - name: Build APK
-        run: ./gradlew assembleDebug
+          cat > app/src/main/java/com/gomoku/app/MainActivity.java <<'JAVA'
+          package com.gomoku.app;
+
+          import android.app.Activity;
+          import android.app.AlertDialog;
+          import android.content.Context;
+          import android.content.SharedPreferences;
+          import android.graphics.Canvas;
+          import android.graphics.Color;
+          import android.graphics.Paint;
+          import android.os.Bundle;
+          import android.view.MotionEvent;
+          import android.view.View;
+
+          import java.util.ArrayList;
+          import java.util.Arrays;
+          import java.util.Random;
+          import java.util.concurrent.ExecutorService;
+          import java.util.concurrent.Executors;
+          import java.util.concurrent.atomic.AtomicInteger;
+
+          public class MainActivity extends Activity {
+              private GameView gameView;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  gameView = new GameView(this);
+                  setContentView(gameView);
+              }
+
+              @Override
+              protected void onPause() {
+                  super.onPause();
+                  if (gameView != null) gameView.saveGameState();
+              }
+
+              @Override
+              protected void onDestroy() {
+                  if (gameView != null) gameView.shutdown();
+                  super.onDestroy();
+              }
+
+              final class GameView extends View {
+                  // ================= 通用状态 =================
+                  private static final int TT_SIZE = 1 << 18;
+                  private static final int TT_MASK = TT_SIZE - 1;
+                  private static final byte TT_EXACT = 0;
+                  private static final byte TT_LOWER = 1;
+                  private static final byte TT_UPPER = 2;
+                  private static final int MAX_PLY = 64;
+                  private static final int MAX_X_MOVES = 256;
+                  private static final int G_WIN_SCORE = 1_000_000;
+                  private static final int X_MATE_SCORE = 1_000_000;
+
+                  // 手机端自由深度上限：防止误调到几十层后长时间等待。
+                  private static final int G_MAX_USER_DEPTH = 15;
+                  private static final int X_MAX_USER_DEPTH = 12;
+
+                  private int currentGameType = 0; // 0 五子棋，1 中国象棋
+                  private float w, margin, startX, startY;
+                  private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                  private final Random rand = new Random(0x5A17C3E2L);
+                  private final ExecutorService aiExecutor = Executors.newSingleThreadExecutor();
+                  private final AtomicInteger searchToken = new AtomicInteger(0);
+                  private volatile int activeSearchToken = 0;
+                  private volatile boolean keepThinking = false;
+                  private volatile boolean rollbackAfterCancel = false;
+                  private volatile long searchDeadlineNanos = Long.MAX_VALUE;
+
+                  private final int[][] G_DIRS = {{1,0}, {0,1}, {1,1}, {1,-1}};
+                  private final int[][] X_DIRS_CROSS = {{-1,0},{1,0},{0,-1},{0,1}};
+                  private final int[][] X_DIRS_KNIGHT = {{-2,-1},{-2,1},{2,-1},{2,1},{-1,-2},{1,-2},{-1,2},{1,2}};
+                  private final int[][] X_DIRS_BISHOP = {{-2,-2},{-2,2},{2,-2},{2,2}};
+                  private final int[][] X_DIRS_ADVISOR = {{-1,-1},{-1,1},{1,-1},{1,1}};
+
+                  // 颜色只解析一次，避免 onDraw 反复 parseColor。
+                  private static final int COLOR_X_BOARD = 0xFFF5DEB3;
+                  private static final int COLOR_BTN_GRAY = 0xFFE0E0E0;
+                  private static final int COLOR_BTN_LIGHT = 0xFFEEEEEE;
+                  private static final int COLOR_GREEN = 0xFF4CAF50;
+                  private static final int COLOR_RED = 0xFFF44336;
+                  private static final int COLOR_ORANGE = 0xFFFF9800;
+                  private static final int COLOR_BLUE = 0xFF64B5F6;
+                  private static final int COLOR_BROWN = 0xFF8D6E63;
+                  private static final int COLOR_SLATE = 0xFF607D8B;
+                  private static final int COLOR_CRIMSON = 0xFFDC143C;
+                  private static final int COLOR_PAPAYA = 0xFFFFEFD5;
+                  private static final int COLOR_CYAN = 0xFF00C8FF;
+                  private static final int COLOR_DARK_RED = 0xFFD32F2F;
+
+                  // ================= 五子棋状态 =================
+                  private static final int G_BOARD_SIZE = 15;
+                  private float g_cellSize, g_boardSize;
+                  private final int[][] g_board = new int[G_BOARD_SIZE][G_BOARD_SIZE];
+                  private final int[][] g_displayBoard = new int[G_BOARD_SIZE][G_BOARD_SIZE];
+                  private final ArrayList<int[]> g_moveHistory = new ArrayList<>();
+                  private int[] g_lastMoveHighlight = null;
+                  private int g_gameMode = 0;
+                  private int g_humanColor = 1;
+                  private int g_currentPlayer = 1;
+                  private int g_aiDepth = 4;
+                  private volatile boolean g_aiThinking = false;
+                  private boolean g_gameOver = false;
+                  private String g_statusMsg = "";
+                  private volatile int g_thinkingSec = 0;
+
+                  private final long[][][] g_zobristTable = new long[G_BOARD_SIZE][G_BOARD_SIZE][3];
+                  private final long[] g_zobristSide = new long[3];
+                  private long g_zobristHash = 0L;
+                  private final int[][] g_posWeights = new int[G_BOARD_SIZE][G_BOARD_SIZE];
+                  private final long[] g_ttKeys = new long[TT_SIZE];
+                  private final int[] g_ttScores = new int[TT_SIZE];
+                  private final byte[] g_ttDepths = new byte[TT_SIZE];
+                  private final byte[] g_ttFlags = new byte[TT_SIZE];
+                  private final short[] g_ttBestMoves = new short[TT_SIZE];
+                  private final byte[] g_ttAges = new byte[TT_SIZE];
+                  private byte g_ttAge = 1;
+                  private final int[][] g_moveBuffer = new int[MAX_PLY][G_BOARD_SIZE * G_BOARD_SIZE];
+                  private final int[][] g_scoreBuffer = new int[MAX_PLY][G_BOARD_SIZE * G_BOARD_SIZE];
+                  private int g_rootBestMove = -1;
+                  private int g_lastCompletedBestMove = -1;
+
+                  // ================= 中国象棋状态 =================
+                  private float x_cellSize, x_boardWidth, x_boardHeight;
+                  private final char[][] x_board = new char[10][9];
+                  private final char[][] x_displayBoard = new char[10][9];
+                  private final ArrayList<XMoveRecord> x_moveHistory = new ArrayList<>();
+                  private final ArrayList<Long> x_positionHistory = new ArrayList<>();
+                  private int[] x_selectedPos = null;
+                  private int[] x_aiLastMove = null;
+                  private final ArrayList<Integer> x_validMovesDisplay = new ArrayList<>();
+                  private int x_gameMode = 0;
+                  private int x_aiDepth = 6;
+                  private boolean x_isRedTurn = true;
+                  private volatile boolean x_aiThinking = false;
+                  private boolean x_gameOver = false;
+                  private String x_statusMsg = "红方走";
+                  private volatile int x_thinkingSec = 0;
+
+                  private final long[][][] x_zobristTable = new long[10][9][14];
+                  private final long[] x_zobristTurn = new long[2];
+                  private long x_zobristHash = 0L;
+                  private final long[] x_ttKeys = new long[TT_SIZE];
+                  private final int[] x_ttScores = new int[TT_SIZE];
+                  private final byte[] x_ttDepths = new byte[TT_SIZE];
+                  private final byte[] x_ttFlags = new byte[TT_SIZE];
+                  private final int[] x_ttBestMoves = new int[TT_SIZE];
+                  private final byte[] x_ttAges = new byte[TT_SIZE];
+                  private byte x_ttAge = 1;
+                  private final int[][] x_moveBuffer = new int[MAX_PLY][MAX_X_MOVES];
+                  private final int[][] x_scoreBuffer = new int[MAX_PLY][MAX_X_MOVES];
+                  private final int[][] x_killerMoves = new int[MAX_PLY][2];
+                  private final int[][] x_historyTable = new int[14][90];
+                  private final int[][] x_redAttacks = new int[MAX_PLY][90];
+                  private final int[][] x_blackAttacks = new int[MAX_PLY][90];
+                  private final long[] x_pathHashes = new long[MAX_PLY];
+                  private int x_rootBestMove = -1;
+                  private int x_lastCompletedBestMove = -1;
+
+                  private final int[][] x_pieceSquare = new int[14][90];
+                  private final int[] x_openingLineChoice = new int[1];
+                  private int[][] x_openingLines;
+                  private final int[] x_pieceMoveScratch = new int[64];
+
+                  final class XMoveRecord {
+                      final int sr, sc, er, ec;
+                      final char captured;
+                      XMoveRecord(int sr, int sc, int er, int ec, char captured) {
+                          this.sr = sr; this.sc = sc; this.er = er; this.ec = ec; this.captured = captured;
+                      }
+                  }
+
+                  private final Runnable timerRunnable = new Runnable() {
+                      @Override
+                      public void run() {
+                          boolean thinking = currentGameType == 0 ? g_aiThinking : x_aiThinking;
+                          if (!thinking) return;
+                          if (currentGameType == 0) g_thinkingSec++; else x_thinkingSec++;
+                          updateStatusMsg();
+                          invalidate();
+                          postDelayed(this, 1000L);
+                      }
+                  };
+
+                  GameView(Context context) {
+                      super(context);
+                      setFocusable(true);
+                      initGomokuEngine();
+                      initXiangqiEngine();
+                      loadGameState();
+                      post(this::resumePendingAiIfNeeded);
+                  }
+
+                  void shutdown() {
+                      cancelSearchOnly();
+                      removeCallbacks(timerRunnable);
+                      aiExecutor.shutdownNow();
+                  }
+
+                  private boolean searchActive() {
+                      return keepThinking
+                              && activeSearchToken == searchToken.get()
+                              && !Thread.currentThread().isInterrupted()
+                              && System.nanoTime() < searchDeadlineNanos;
+                  }
+
+                  private void cancelSearchOnly() {
+                      keepThinking = false;
+                      searchToken.incrementAndGet();
+                  }
+
+                  private int beginSearch(long budgetMillis) {
+                      int token = searchToken.incrementAndGet();
+                      activeSearchToken = token;
+                      keepThinking = true;
+                      searchDeadlineNanos = budgetMillis <= 0
+                              ? Long.MAX_VALUE
+                              : System.nanoTime() + budgetMillis * 1_000_000L;
+                      return token;
+                  }
+
+                  private boolean tokenStillCurrent(int token) {
+                      return token == searchToken.get();
+                  }
+
+                  public void saveGameState() {
+                      SharedPreferences.Editor ed = getContext()
+                              .getSharedPreferences("BoardGamesSave", Context.MODE_PRIVATE).edit();
+                      ed.putInt("gameType", currentGameType);
+                      ed.putInt("g_aiDepth", g_aiDepth);
+                      ed.putInt("x_aiDepth", x_aiDepth);
+                      ed.putInt("g_gameMode", g_gameMode);
+                      ed.putInt("x_gameMode", x_gameMode);
+                      ed.putInt("g_humanColor", g_humanColor);
+
+                      StringBuilder gHist = new StringBuilder(g_moveHistory.size() * 8);
+                      for (int[] m : g_moveHistory) {
+                          gHist.append(m[0]).append(',').append(m[1]).append(',').append(m[2]).append(';');
+                      }
+                      ed.putString("g_history", gHist.toString());
+
+                      StringBuilder xHist = new StringBuilder(x_moveHistory.size() * 12);
+                      for (XMoveRecord m : x_moveHistory) {
+                          xHist.append(m.sr).append(',').append(m.sc).append(',')
+                                  .append(m.er).append(',').append(m.ec).append(';');
+                      }
+                      ed.putString("x_history", xHist.toString());
+                      ed.apply();
+                  }
+
+                  private void loadGameState() {
+                      SharedPreferences prefs = getContext().getSharedPreferences("BoardGamesSave", Context.MODE_PRIVATE);
+                      currentGameType = clamp(prefs.getInt("gameType", 0), 0, 1);
+                      g_aiDepth = clamp(prefs.getInt("g_aiDepth", 4), 1, G_MAX_USER_DEPTH);
+                      x_aiDepth = clamp(prefs.getInt("x_aiDepth", 6), 1, X_MAX_USER_DEPTH);
+                      g_gameMode = clamp(prefs.getInt("g_gameMode", 0), 0, 1);
+                      x_gameMode = clamp(prefs.getInt("x_gameMode", 0), 0, 1);
+                      g_humanColor = clamp(prefs.getInt("g_humanColor", 1), 1, 2);
+
+                      restartGomoku(false);
+                      restartXiangqi(false);
+
+                      boolean saveValid = true;
+                      try {
+                          String gHist = prefs.getString("g_history", "");
+                          if (gHist != null && !gHist.isEmpty()) {
+                              for (String ms : gHist.split(";")) {
+                                  if (ms.isEmpty()) continue;
+                                  String[] p = ms.split(",");
+                                  if (p.length != 3) throw new IllegalArgumentException("bad gomoku save");
+                                  int r = Integer.parseInt(p[0]);
+                                  int c = Integer.parseInt(p[1]);
+                                  int color = Integer.parseInt(p[2]);
+                                  if (!insideG(r, c) || color < 1 || color > 2 || g_board[r][c] != 0) {
+                                      throw new IllegalArgumentException("bad gomoku move");
+                                  }
+                                  g_makeMove(r, c, color);
+                                  g_currentPlayer = 3 - color;
+                                  if (g_checkWin(g_board, r, c, color)) {
+                                      g_gameOver = true;
+                                      g_statusMsg = (color == 1 ? "黑" : "白") + "棋胜利！";
+                                  }
+                              }
+                          }
+
+                          String xHist = prefs.getString("x_history", "");
+                          if (xHist != null && !xHist.isEmpty()) {
+                              for (String ms : xHist.split(";")) {
+                                  if (ms.isEmpty()) continue;
+                                  String[] p = ms.split(",");
+                                  if (p.length != 4) throw new IllegalArgumentException("bad xiangqi save");
+                                  int sr = Integer.parseInt(p[0]);
+                                  int sc = Integer.parseInt(p[1]);
+                                  int er = Integer.parseInt(p[2]);
+                                  int ec = Integer.parseInt(p[3]);
+                                  int move = encodeXMove(sr, sc, er, ec);
+                                  if (!insideX(sr, sc) || !insideX(er, ec)
+                                          || x_board[sr][sc] == '.'
+                                          || x_isRed(x_board[sr][sc]) != x_isRedTurn
+                                          || !x_isPseudoMovePresent(sr, sc, move)
+                                          || !x_isLegalMove(x_board, move, x_isRedTurn)) {
+                                      throw new IllegalArgumentException("bad xiangqi move");
+                                  }
+                                  x_makeMove(sr, sc, er, ec);
+                              }
+                              if (!x_moveHistory.isEmpty() && x_checkGameOver(x_board, x_isRedTurn)) {
+                                  boolean inCheck = x_isInCheck(x_board, x_isRedTurn);
+                                  x_statusMsg = inCheck
+                                          ? "绝杀！" + (x_isRedTurn ? "黑" : "红") + "方胜利！"
+                                          : "困毙！" + (x_isRedTurn ? "黑" : "红") + "方胜利！(对方无棋可走)";
+                                  x_gameOver = true;
+                              }
+                          }
+                      } catch (RuntimeException e) {
+                          saveValid = false;
+                      }
+
+                      if (!saveValid) {
+                          restartGomoku(false);
+                          restartXiangqi(false);
+                          prefs.edit().remove("g_history").remove("x_history").apply();
+                      }
+                      syncGomokuBoard();
+                      syncXiangqiBoard();
+                      updateStatusMsg();
+                      invalidate();
+                  }
+
+                  private void resumePendingAiIfNeeded() {
+                      if (currentGameType == 0 && g_gameMode == 0 && !g_gameOver
+                              && g_currentPlayer != g_humanColor && !g_aiThinking) {
+                          triggerGomokuAiMove();
+                      } else if (currentGameType == 1 && x_gameMode == 0 && !x_gameOver
+                              && !x_isRedTurn && !x_aiThinking) {
+                          triggerXiangqiAiMove();
+                      }
+                  }
+
+                  private void updateStatusMsg() {
+                      if (currentGameType == 0) {
+                          if (g_gameOver) return;
+                          if (g_gameMode == 1) {
+                              g_statusMsg = g_currentPlayer == 1 ? "轮到黑棋" : "轮到白棋";
+                          } else if (g_currentPlayer == g_humanColor) {
+                              g_statusMsg = "轮到玩家下棋";
+                          } else {
+                              g_statusMsg = g_aiDepth > 5 ? "AI思考中... 已思考 " + g_thinkingSec + "s" : "AI下棋中...";
+                          }
+                      } else {
+                          if (x_gameOver) return;
+                          if (x_gameMode == 1) {
+                              x_statusMsg = x_isRedTurn ? "红方走" : "黑方走";
+                          } else if (x_isRedTurn) {
+                              x_statusMsg = "轮到玩家走 (红方)";
+                          } else {
+                              x_statusMsg = "AI思考中... 已思考 " + x_thinkingSec + "s";
+                          }
+                          if (!x_gameOver && !x_aiThinking && x_isInCheck(x_displayBoard, x_isRedTurn)) {
+                              x_statusMsg += " [将军!]";
+                          }
+                      }
+                  }
+
+                  private static int clamp(int value, int min, int max) {
+                      return Math.max(min, Math.min(max, value));
+                  }
+
+                  private int scoreToTt(int score, int ply, int mateScore) {
+                      if (score > mateScore - MAX_PLY) return score + ply;
+                      if (score < -mateScore + MAX_PLY) return score - ply;
+                      return score;
+                  }
+
+                  private int scoreFromTt(int score, int ply, int mateScore) {
+                      if (score > mateScore - MAX_PLY) return score - ply;
+                      if (score < -mateScore + MAX_PLY) return score + ply;
+                      return score;
+                  }
+
+                  private boolean insideG(int r, int c) {
+                      return r >= 0 && r < G_BOARD_SIZE && c >= 0 && c < G_BOARD_SIZE;
+                  }
+
+                  private boolean insideX(int r, int c) {
+                      return r >= 0 && r < 10 && c >= 0 && c < 9;
+                  }
+
+                  // ================= 五子棋核心逻辑 =================
+
+                  private void initGomokuEngine() {
+                      for (int r = 0; r < G_BOARD_SIZE; r++) {
+                          for (int c = 0; c < G_BOARD_SIZE; c++) {
+                              g_zobristTable[r][c][1] = rand.nextLong();
+                              g_zobristTable[r][c][2] = rand.nextLong();
+                              int centerDistance = Math.abs(7 - r) + Math.abs(7 - c);
+                              g_posWeights[r][c] = Math.max(0, 18 - centerDistance * 2);
+                          }
+                      }
+                      g_zobristSide[1] = rand.nextLong();
+                      g_zobristSide[2] = rand.nextLong();
+                  }
+
+                  private void restartGomoku(boolean triggerAI) {
+                      rollbackAfterCancel = false;
+                      cancelSearchOnly();
+                      for (int[] row : g_board) Arrays.fill(row, 0);
+                      for (int[] row : g_displayBoard) Arrays.fill(row, 0);
+                      g_moveHistory.clear();
+                      g_lastMoveHighlight = null;
+                      g_zobristHash = 0L;
+                      g_currentPlayer = 1;
+                      g_gameOver = false;
+                      g_aiThinking = false;
+                      g_thinkingSec = 0;
+                      Arrays.fill(g_ttKeys, 0L);
+                      Arrays.fill(g_ttDepths, (byte) 0);
+                      g_ttAge++;
+                      syncGomokuBoard();
+                      updateStatusMsg();
+                      invalidate();
+                      if (triggerAI && g_gameMode == 0 && g_humanColor == 2) triggerGomokuAiMove();
+                  }
+
+                  private void syncGomokuBoard() {
+                      for (int r = 0; r < G_BOARD_SIZE; r++) {
+                          System.arraycopy(g_board[r], 0, g_displayBoard[r], 0, G_BOARD_SIZE);
+                      }
+                  }
+
+                  private boolean g_hasNeighbor(int r, int c, int dist) {
+                      int r0 = Math.max(0, r - dist), r1 = Math.min(G_BOARD_SIZE - 1, r + dist);
+                      int c0 = Math.max(0, c - dist), c1 = Math.min(G_BOARD_SIZE - 1, c + dist);
+                      for (int rr = r0; rr <= r1; rr++) {
+                          for (int cc = c0; cc <= c1; cc++) {
+                              if (g_board[rr][cc] != 0) return true;
+                          }
+                      }
+                      return false;
+                  }
+
+                  private int g_virtualCell(int r, int c, int centerR, int centerC, int player) {
+                      if (!insideG(r, c)) return 2;
+                      if (r == centerR && c == centerC) return 1;
+                      int v = g_board[r][c];
+                      if (v == 0) return 0;
+                      return v == player ? 1 : 2;
+                  }
+
+                  private int g_directionScore(int r, int c, int player, int dr, int dc) {
+                      int left = 0, right = 0;
+                      for (int i = 1; i <= 4; i++) {
+                          if (g_virtualCell(r - dr * i, c - dc * i, r, c, player) == 1) left++;
+                          else break;
+                      }
+                      for (int i = 1; i <= 4; i++) {
+                          if (g_virtualCell(r + dr * i, c + dc * i, r, c, player) == 1) right++;
+                          else break;
+                      }
+                      int count = left + 1 + right;
+                      int open = 0;
+                      if (g_virtualCell(r - dr * (left + 1), c - dc * (left + 1), r, c, player) == 0) open++;
+                      if (g_virtualCell(r + dr * (right + 1), c + dc * (right + 1), r, c, player) == 0) open++;
+
+                      if (count >= 5) return G_WIN_SCORE;
+                      int best;
+                      if (count == 4) best = open == 2 ? 220_000 : open == 1 ? 70_000 : 0;
+                      else if (count == 3) best = open == 2 ? 18_000 : open == 1 ? 3_000 : 0;
+                      else if (count == 2) best = open == 2 ? 1_200 : open == 1 ? 250 : 0;
+                      else best = open == 2 ? 80 : 15;
+
+                      // 额外识别跳四、跳三等非连续棋型；直接扫描窗口，不在搜索热路径创建数组。
+                      for (int start = -4; start <= 0; start++) {
+                          int own = 0, empty = 0, blocked = 0;
+                          for (int offset = start; offset < start + 5; offset++) {
+                              int cell = g_virtualCell(r + dr * offset, c + dc * offset, r, c, player);
+                              if (cell == 1) own++;
+                              else if (cell == 0) empty++;
+                              else blocked++;
+                          }
+                          if (blocked != 0) continue;
+                          if (own == 5) best = Math.max(best, G_WIN_SCORE);
+                          else if (own == 4 && empty == 1) best = Math.max(best, 90_000);
+                          else if (own == 3 && empty == 2) best = Math.max(best, 8_000);
+                          else if (own == 2 && empty == 3) best = Math.max(best, 600);
+                      }
+                      return best;
+                  }
+
+                  private int g_localScore(int[][] ignoredBoard, int r, int c, int player) {
+                      if (!insideG(r, c)) return Integer.MIN_VALUE / 4;
+                      if (g_board[r][c] != 0 && g_board[r][c] != player) return Integer.MIN_VALUE / 4;
+                      int sum = 0, fours = 0, threes = 0;
+                      for (int[] d : G_DIRS) {
+                          int s = g_directionScore(r, c, player, d[0], d[1]);
+                          if (s >= G_WIN_SCORE) return G_WIN_SCORE;
+                          if (s >= 70_000) fours++;
+                          else if (s >= 8_000) threes++;
+                          sum += s;
+                      }
+                      if (fours >= 2) sum += 300_000;
+                      else if (fours >= 1 && threes >= 1) sum += 180_000;
+                      else if (threes >= 2) sum += 45_000;
+                      return sum + g_posWeights[r][c];
+                  }
+
+                  private boolean g_isForbiddenMove(int[][] ignoredBoard, int r, int c, int player) {
+                      if (!insideG(r, c) || g_board[r][c] != 0) return true;
+                      g_board[r][c] = player;
+                      boolean win = g_checkWin(g_board, r, c, player);
+                      if (win) {
+                          g_board[r][c] = 0;
+                          return false;
+                      }
+                      int fours = 0, threes = 0;
+                      for (int[] d : G_DIRS) {
+                          int s = g_directionScore(r, c, player, d[0], d[1]);
+                          if (s >= 70_000) fours++;
+                          else if (s >= 8_000) threes++;
+                      }
+                      g_board[r][c] = 0;
+                      return fours >= 2 || threes >= 2;
+                  }
+
+                  private boolean g_checkWin(int[][] board, int r, int c, int player) {
+                      for (int[] d : G_DIRS) {
+                          int count = 1;
+                          for (int i = 1; i < 5; i++) {
+                              int nr = r - d[0] * i, nc = c - d[1] * i;
+                              if (insideG(nr, nc) && board[nr][nc] == player) count++;
+                              else break;
+                          }
+                          for (int i = 1; i < 5; i++) {
+                              int nr = r + d[0] * i, nc = c + d[1] * i;
+                              if (insideG(nr, nc) && board[nr][nc] == player) count++;
+                              else break;
+                          }
+                          if (count >= 5) return true;
+                      }
+                      return false;
+                  }
+
+                  private int g_findForcedTacticalMove(int player) {
+                      int opponent = 3 - player;
+                      int firstBlock = -1;
+                      for (int r = 0; r < G_BOARD_SIZE; r++) {
+                          for (int c = 0; c < G_BOARD_SIZE; c++) {
+                              if (g_board[r][c] != 0 || !g_hasNeighbor(r, c, 2)) continue;
+                              g_board[r][c] = player;
+                              boolean wins = g_checkWin(g_board, r, c, player);
+                              g_board[r][c] = 0;
+                              if (wins) return (r << 8) | c;
+
+                              g_board[r][c] = opponent;
+                              boolean blocks = g_checkWin(g_board, r, c, opponent);
+                              g_board[r][c] = 0;
+                              if (blocks && firstBlock == -1) firstBlock = (r << 8) | c;
+                          }
+                      }
+                      return firstBlock;
+                  }
+
+                  private int g_generateMoves(int ply, int player, int ttMove) {
+                      int[] moves = g_moveBuffer[ply];
+                      int[] scores = g_scoreBuffer[ply];
+                      int size = 0;
+                      int occupied = 0;
+                      int minR = G_BOARD_SIZE, maxR = -1, minC = G_BOARD_SIZE, maxC = -1;
+                      for (int r = 0; r < G_BOARD_SIZE; r++) {
+                          for (int c = 0; c < G_BOARD_SIZE; c++) {
+                              if (g_board[r][c] != 0) {
+                                  occupied++;
+                                  minR = Math.min(minR, r); maxR = Math.max(maxR, r);
+                                  minC = Math.min(minC, c); maxC = Math.max(maxC, c);
+                              }
+                          }
+                      }
+                      if (occupied == 0) {
+                          moves[0] = (7 << 8) | 7;
+                          scores[0] = 1_000_000;
+                          return 1;
+                      }
+
+                      minR = Math.max(0, minR - 2); maxR = Math.min(G_BOARD_SIZE - 1, maxR + 2);
+                      minC = Math.max(0, minC - 2); maxC = Math.min(G_BOARD_SIZE - 1, maxC + 2);
+                      int opponent = 3 - player;
+                      boolean hasWin = false;
+                      boolean hasForcedBlock = false;
+
+                      for (int r = minR; r <= maxR; r++) {
+                          for (int c = minC; c <= maxC; c++) {
+                              if (g_board[r][c] != 0 || !g_hasNeighbor(r, c, 2)) continue;
+                              int own = g_localScore(g_board, r, c, player);
+                              int enemy = g_localScore(g_board, r, c, opponent);
+                              boolean win = own >= G_WIN_SCORE;
+                              boolean block = enemy >= G_WIN_SCORE;
+                              int move = (r << 8) | c;
+                              int score = own * 2 + enemy * 3;
+                              if (move == ttMove) score += 2_000_000;
+                              if (win) score += 4_000_000;
+                              else if (block) score += 3_000_000;
+                              moves[size] = move;
+                              scores[size] = score;
+                              size++;
+                              hasWin |= win;
+                              hasForcedBlock |= block;
+                          }
+                      }
+
+                      if (size == 0) return 0;
+                      if (hasWin || hasForcedBlock) {
+                          int write = 0;
+                          for (int i = 0; i < size; i++) {
+                              int r = (moves[i] >> 8) & 0xFF, c = moves[i] & 0xFF;
+                              int own = g_localScore(g_board, r, c, player);
+                              int enemy = g_localScore(g_board, r, c, opponent);
+                              if ((hasWin && own >= G_WIN_SCORE)
+                                      || (!hasWin && hasForcedBlock && enemy >= G_WIN_SCORE)) {
+                                  moves[write] = moves[i];
+                                  scores[write] = scores[i];
+                                  write++;
+                              }
+                          }
+                          size = write;
+                      }
+
+                      // 插入排序；候选通常少于 60 个，避免对象和装箱分配。
+                      for (int i = 1; i < size; i++) {
+                          int m = moves[i], s = scores[i], j = i - 1;
+                          while (j >= 0 && scores[j] < s) {
+                              moves[j + 1] = moves[j];
+                              scores[j + 1] = scores[j];
+                              j--;
+                          }
+                          moves[j + 1] = m;
+                          scores[j + 1] = s;
+                      }
+
+                      int limit;
+                      if (ply == 0) limit = 20;
+                      else if (ply <= 2) limit = 16;
+                      else if (ply <= 5) limit = 12;
+                      else limit = 10;
+                      return Math.min(size, limit);
+                  }
+
+                  private int g_evaluateBoard() {
+                      int ai = 3 - g_humanColor;
+                      int human = g_humanColor;
+                      int score = 0;
+                      boolean any = false;
+                      for (int r = 0; r < G_BOARD_SIZE; r++) {
+                          for (int c = 0; c < G_BOARD_SIZE; c++) {
+                              if (g_board[r][c] != 0) any = true;
+                              if (g_board[r][c] == 0 && g_hasNeighbor(r, c, 2)) {
+                                  int a = g_localScore(g_board, r, c, ai);
+                                  int h = g_localScore(g_board, r, c, human);
+                                  score += a;
+                                  score -= (h * 6) / 5; // 略偏重防守，减少“看见进攻却漏挡”。
+                              } else if (g_board[r][c] == ai) {
+                                  score += g_posWeights[r][c];
+                              } else if (g_board[r][c] == human) {
+                                  score -= g_posWeights[r][c];
+                              }
+                          }
+                      }
+                      return any ? score : 0;
+                  }
+
+                  private long packGomokuResult(int r, int c, int score) {
+                      return ((long) score << 32) | ((long) (r & 0xFFFF) << 16) | (c & 0xFFFFL);
+                  }
+
+                  private int unpackScoreG(long packed) {
+                      return (int) (packed >> 32);
+                  }
+
+                  private int unpackMoveG(long packed) {
+                      int r = (int) ((packed >>> 16) & 0xFFFF);
+                      int c = (int) (packed & 0xFFFF);
+                      if (r == 0xFFFF || c == 0xFFFF) return -1;
+                      return (r << 8) | c;
+                  }
+
+                  private long g_alphaBeta(int depth, int alpha, int beta, int player) {
+                      return g_alphaBeta(depth, alpha, beta, player, 0);
+                  }
+
+                  private long g_alphaBeta(int depth, int alpha, int beta, int player, int ply) {
+                      if (!searchActive() || depth <= 0 || ply >= MAX_PLY - 1) {
+                          return packGomokuResult(-1, -1, g_evaluateBoard());
+                      }
+                      int aiColor = 3 - g_humanColor;
+                      int originalAlpha = alpha, originalBeta = beta;
+                      long hashKey = g_zobristHash ^ g_zobristSide[player];
+                      int ttIdx = (int) (hashKey & TT_MASK);
+                      int ttMove = -1;
+                      if (g_ttKeys[ttIdx] == hashKey) {
+                          ttMove = g_ttBestMoves[ttIdx] & 0xFFFF;
+                          if (g_ttDepths[ttIdx] >= depth) {
+                              int ttScore = scoreFromTt(g_ttScores[ttIdx], ply, G_WIN_SCORE);
+                              byte flag = g_ttFlags[ttIdx];
+                              if (flag == TT_EXACT) return packGomokuResult(ttMove >> 8, ttMove & 0xFF, ttScore);
+                              if (flag == TT_LOWER) alpha = Math.max(alpha, ttScore);
+                              else if (flag == TT_UPPER) beta = Math.min(beta, ttScore);
+                              if (alpha >= beta) return packGomokuResult(ttMove >> 8, ttMove & 0xFF, ttScore);
+                          }
+                      }
+
+                      int count = g_generateMoves(ply, player, ttMove);
+                      if (count == 0) return packGomokuResult(-1, -1, 0);
+                      boolean maximizing = player == aiColor;
+                      int bestScore = maximizing ? Integer.MIN_VALUE + 1 : Integer.MAX_VALUE - 1;
+                      int bestMove = -1;
+
+                      for (int i = 0; i < count; i++) {
+                          if (!searchActive()) break;
+                          int move = g_moveBuffer[ply][i];
+                          int r = (move >> 8) & 0xFF, c = move & 0xFF;
+                          g_board[r][c] = player;
+                          g_zobristHash ^= g_zobristTable[r][c][player];
+                          int value;
+                          try {
+                              if (g_checkWin(g_board, r, c, player)) {
+                                  value = player == aiColor ? G_WIN_SCORE - ply : -G_WIN_SCORE + ply;
+                              } else {
+                                  int nextDepth = depth - 1;
+                                  boolean quietLateMove = i >= 6 && depth >= 4 && g_scoreBuffer[ply][i] < 8_000;
+                                  if (quietLateMove) nextDepth = Math.max(0, nextDepth - 1);
+
+                                  if (i == 0) {
+                                      value = unpackScoreG(g_alphaBeta(nextDepth, alpha, beta, 3 - player, ply + 1));
+                                  } else if (maximizing) {
+                                      value = unpackScoreG(g_alphaBeta(nextDepth, alpha, alpha + 1, 3 - player, ply + 1));
+                                      if (quietLateMove && value > alpha) {
+                                          value = unpackScoreG(g_alphaBeta(depth - 1, alpha, alpha + 1, 3 - player, ply + 1));
+                                      }
+                                      if (value > alpha && value < beta) {
+                                          value = unpackScoreG(g_alphaBeta(depth - 1, alpha, beta, 3 - player, ply + 1));
+                                      }
+                                  } else {
+                                      value = unpackScoreG(g_alphaBeta(nextDepth, beta - 1, beta, 3 - player, ply + 1));
+                                      if (quietLateMove && value < beta) {
+                                          value = unpackScoreG(g_alphaBeta(depth - 1, beta - 1, beta, 3 - player, ply + 1));
+                                      }
+                                      if (value > alpha && value < beta) {
+                                          value = unpackScoreG(g_alphaBeta(depth - 1, alpha, beta, 3 - player, ply + 1));
+                                      }
+                                  }
+                              }
+                          } finally {
+                              g_zobristHash ^= g_zobristTable[r][c][player];
+                              g_board[r][c] = 0;
+                          }
+
+                          if (maximizing) {
+                              if (value > bestScore) { bestScore = value; bestMove = move; }
+                              alpha = Math.max(alpha, bestScore);
+                          } else {
+                              if (value < bestScore) { bestScore = value; bestMove = move; }
+                              beta = Math.min(beta, bestScore);
+                          }
+                          if (alpha >= beta) break;
+                      }
+
+                      if (bestMove == -1) return packGomokuResult(-1, -1, g_evaluateBoard());
+                      if (ply == 0) g_rootBestMove = bestMove;
+
+                      if (searchActive()) {
+                          byte flag = bestScore <= originalAlpha ? TT_UPPER
+                                  : bestScore >= originalBeta ? TT_LOWER : TT_EXACT;
+                          boolean replace = g_ttKeys[ttIdx] != hashKey
+                                  || g_ttAges[ttIdx] != g_ttAge
+                                  || g_ttDepths[ttIdx] <= depth;
+                          if (replace) {
+                              g_ttKeys[ttIdx] = hashKey;
+                              g_ttDepths[ttIdx] = (byte) Math.min(127, depth);
+                              g_ttScores[ttIdx] = scoreToTt(bestScore, ply, G_WIN_SCORE);
+                              g_ttFlags[ttIdx] = flag;
+                              g_ttBestMoves[ttIdx] = (short) bestMove;
+                              g_ttAges[ttIdx] = g_ttAge;
+                          }
+                      }
+                      return packGomokuResult(bestMove >> 8, bestMove & 0xFF, bestScore);
+                  }
+
+                  private int g_iterativeDeepening(int maxDepth) {
+                      g_lastCompletedBestMove = -1;
+                      int previousScore = 0;
+                      int safeDepth = Math.min(maxDepth, MAX_PLY - 2);
+                      for (int depth = 1; depth <= safeDepth && searchActive(); depth++) {
+                          g_rootBestMove = -1;
+                          int alpha = Integer.MIN_VALUE + 2;
+                          int beta = Integer.MAX_VALUE - 2;
+                          if (depth >= 3) {
+                              int window = 6_000;
+                              alpha = previousScore - window;
+                              beta = previousScore + window;
+                          }
+                          long result = g_alphaBeta(depth, alpha, beta, 3 - g_humanColor, 0);
+                          if (!searchActive()) break;
+                          int score = unpackScoreG(result);
+                          if (score <= alpha || score >= beta) {
+                              result = g_alphaBeta(depth, Integer.MIN_VALUE + 2, Integer.MAX_VALUE - 2,
+                                      3 - g_humanColor, 0);
+                              if (!searchActive()) break;
+                              score = unpackScoreG(result);
+                          }
+                          int move = g_rootBestMove != -1 ? g_rootBestMove : unpackMoveG(result);
+                          if (move != -1) g_lastCompletedBestMove = move;
+                          previousScore = score;
+                          if (Math.abs(score) >= G_WIN_SCORE - 100) break;
+                      }
+                      return g_lastCompletedBestMove;
+                  }
+
+                  private long g_timeBudgetMillis(int depth) {
+                      if (depth <= 4) return 900L;
+                      if (depth <= 7) return 2_800L;
+                      if (depth <= 11) return 7_000L;
+                      return Math.min(18_000L, 7_000L + (depth - 11L) * 700L);
+                  }
+
+                  private void triggerGomokuAiMove() {
+                      if (g_aiThinking || g_gameOver) return;
+                      g_aiThinking = true;
+                      g_thinkingSec = 0;
+                      rollbackAfterCancel = false;
+                      g_ttAge++;
+                      int token = beginSearch(g_timeBudgetMillis(g_aiDepth));
+                      updateStatusMsg();
+                      invalidate();
+                      removeCallbacks(timerRunnable);
+                      postDelayed(timerRunnable, 1000L);
+
+                      aiExecutor.execute(() -> {
+                          int bestMove = -1;
+                          Throwable error = null;
+                          try {
+                              bestMove = g_findForcedTacticalMove(3 - g_humanColor);
+                              if (bestMove == -1) bestMove = g_iterativeDeepening(g_aiDepth);
+                              if (bestMove == -1) {
+                                  int count = g_generateMoves(0, 3 - g_humanColor, -1);
+                                  if (count > 0) bestMove = g_moveBuffer[0][0];
+                              }
+                          } catch (Throwable t) {
+                              error = t;
+                          }
+                          final int chosen = bestMove;
+                          final Throwable searchError = error;
+                          final boolean canceledBeforePost = !tokenStillCurrent(token) || !keepThinking;
+                          post(() -> {
+                              boolean canceled = canceledBeforePost || !tokenStillCurrent(token) || !keepThinking;
+                              removeCallbacks(timerRunnable);
+                              g_aiThinking = false;
+                              keepThinking = false;
+                              if (canceled) {
+                                  if (rollbackAfterCancel) {
+                                      g_undoSingleMove();
+                                      g_statusMsg = "思考已中断，已撤回刚才一步";
+                                      rollbackAfterCancel = false;
+                                  } else {
+                                      g_statusMsg = "思考已中断";
+                                  }
+                                  invalidate();
+                                  return;
+                              }
+                              if (searchError != null) searchError.printStackTrace();
+                              if (chosen != -1) {
+                                  int r = (chosen >> 8) & 0xFF, c = chosen & 0xFF;
+                                  if (insideG(r, c) && g_board[r][c] == 0) {
+                                      int aiColor = 3 - g_humanColor;
+                                      g_makeMove(r, c, aiColor);
+                                      if (g_checkWin(g_board, r, c, aiColor)) {
+                                          g_statusMsg = (aiColor == 1 ? "黑" : "白") + "棋胜利！";
+                                          g_gameOver = true;
+                                      } else {
+                                          g_currentPlayer = g_humanColor;
+                                          updateStatusMsg();
+                                      }
+                                  }
+                              } else {
+                                  g_statusMsg = "棋盘已满，和棋！";
+                                  g_gameOver = true;
+                              }
+                              invalidate();
+                          });
+                      });
+                  }
+
+                  private void g_makeMove(int r, int c, int player) {
+                      g_board[r][c] = player;
+                      g_moveHistory.add(new int[]{r, c, player});
+                      g_zobristHash ^= g_zobristTable[r][c][player];
+                      g_lastMoveHighlight = new int[]{r, c};
+                      syncGomokuBoard();
+                  }
+
+                  private boolean g_undoSingleMove() {
+                      if (g_moveHistory.isEmpty()) return false;
+                      int[] m = g_moveHistory.remove(g_moveHistory.size() - 1);
+                      g_board[m[0]][m[1]] = 0;
+                      g_zobristHash ^= g_zobristTable[m[0]][m[1]][m[2]];
+                      g_currentPlayer = m[2];
+                      g_gameOver = false;
+                      if (g_moveHistory.isEmpty()) g_lastMoveHighlight = null;
+                      else {
+                          int[] last = g_moveHistory.get(g_moveHistory.size() - 1);
+                          g_lastMoveHighlight = new int[]{last[0], last[1]};
+                      }
+                      syncGomokuBoard();
+                      return true;
+                  }
+
+                  private void g_undoMove() {
+                      int wanted = g_gameMode == 0 ? 2 : 1;
+                      int pops = Math.min(wanted, g_moveHistory.size());
+                      if (pops == 0) return;
+                      for (int i = 0; i < pops; i++) g_undoSingleMove();
+                      updateStatusMsg();
+                      invalidate();
+                  }
+
+                  // ================= 中国象棋核心逻辑 =================
+
+                  private int encodeXMove(int sr, int sc, int er, int ec) {
+                      return (sr << 12) | (sc << 8) | (er << 4) | ec;
+                  }
+
+                  private int x_sr(int move) { return (move >>> 12) & 0xF; }
+                  private int x_sc(int move) { return (move >>> 8) & 0xF; }
+                  private int x_er(int move) { return (move >>> 4) & 0xF; }
+                  private int x_ec(int move) { return move & 0xF; }
+
+                  private void initXiangqiEngine() {
+                      for (int r = 0; r < 10; r++) {
+                          for (int c = 0; c < 9; c++) {
+                              for (int p = 0; p < 14; p++) x_zobristTable[r][c][p] = rand.nextLong();
+                          }
+                      }
+                      x_zobristTurn[0] = rand.nextLong();
+                      x_zobristTurn[1] = rand.nextLong();
+                      initXiangqiPieceSquareTables();
+                      initXiangqiOpeningBook();
+                      for (int[] killers : x_killerMoves) Arrays.fill(killers, -1);
+                  }
+
+                  private void initXiangqiPieceSquareTables() {
+                      String pieces = "rnbakcpRNBAKCP";
+                      for (int idx = 0; idx < pieces.length(); idx++) {
+                          char p = pieces.charAt(idx);
+                          boolean red = x_isRed(p);
+                          char type = Character.toLowerCase(p);
+                          for (int r = 0; r < 10; r++) {
+                              for (int c = 0; c < 9; c++) {
+                                  int relR = red ? 9 - r : r; // 0 为己方底线，9 为对方底线。
+                                  int center = 4 - Math.abs(4 - c);
+                                  int value = 0;
+                                  switch (type) {
+                                      case 'r':
+                                          value = center * 3 + relR * 2;
+                                          if (c == 4) value += 8;
+                                          break;
+                                      case 'c':
+                                          value = center * 5 + Math.min(relR, 6) * 3;
+                                          if (relR >= 3 && relR <= 6) value += 12;
+                                          break;
+                                      case 'n':
+                                          value = center * 8 + Math.min(relR, 6) * 4;
+                                          if (c == 0 || c == 8) value -= 18;
+                                          break;
+                                      case 'p':
+                                          value = relR * 7 + center * (relR >= 5 ? 5 : 1);
+                                          if (relR >= 5) value += 45;
+                                          break;
+                                      case 'b':
+                                          value = center * 2;
+                                          break;
+                                      case 'a':
+                                          value = (c == 4 ? 10 : 4) + (relR == 0 ? 6 : 0);
+                                          break;
+                                      case 'k':
+                                          value = -relR * 12 + (c == 4 ? 12 : 0);
+                                          break;
+                                      default:
+                                          break;
+                                  }
+                                  x_pieceSquare[idx][r * 9 + c] = value;
+                              }
+                          }
+                      }
+                  }
+
+                  private void initXiangqiOpeningBook() {
+                      // 每一行都是严格按历史匹配的完整走法序列，不再把互不相关的开局步随机混在一起。
+                      x_openingLines = new int[][]{
+                              {
+                                      encodeXMove(7, 7, 7, 4), // 红：炮二平五
+                                      encodeXMove(0, 7, 2, 6), // 黑：马8进7
+                                      encodeXMove(9, 7, 7, 6), // 红：马二进三
+                                      encodeXMove(0, 8, 0, 7)  // 黑：车9平8
+                              },
+                              {
+                                      encodeXMove(7, 1, 7, 4), // 红：炮八平五
+                                      encodeXMove(0, 1, 2, 2), // 黑：马2进3
+                                      encodeXMove(9, 1, 7, 2), // 红：马八进七
+                                      encodeXMove(0, 0, 0, 1)  // 黑：车1平2
+                              },
+                              {
+                                      encodeXMove(6, 2, 5, 2), // 红：兵七进一
+                                      encodeXMove(3, 6, 4, 6), // 黑：卒7进1
+                                      encodeXMove(9, 1, 7, 2), // 红：马八进七
+                                      encodeXMove(0, 7, 2, 6)  // 黑：马8进7
+                              },
+                              {
+                                      encodeXMove(9, 6, 7, 4), // 红：相三进五
+                                      encodeXMove(0, 2, 2, 4), // 黑：象3进5
+                                      encodeXMove(9, 7, 7, 6), // 红：马二进三
+                                      encodeXMove(0, 7, 2, 6)  // 黑：马8进7
+                              },
+                              {
+                                      encodeXMove(9, 2, 7, 4), // 红：相七进五
+                                      encodeXMove(0, 6, 2, 4), // 黑：象7进5
+                                      encodeXMove(9, 1, 7, 2),
+                                      encodeXMove(0, 1, 2, 2)
+                              }
+                      };
+                  }
+
+                  private void restartXiangqi(boolean triggerAI) {
+                      rollbackAfterCancel = false;
+                      cancelSearchOnly();
+                      String[] init = {
+                              "rnbakabnr", ".........", ".c.....c.", "p.p.p.p.p", ".........",
+                              ".........", "P.P.P.P.P", ".C.....C.", ".........", "RNBAKABNR"
+                      };
+                      for (int r = 0; r < 10; r++) x_board[r] = init[r].toCharArray();
+
+                      x_zobristHash = 0L;
+                      for (int r = 0; r < 10; r++) {
+                          for (int c = 0; c < 9; c++) {
+                              char p = x_board[r][c];
+                              if (p != '.') x_zobristHash ^= x_zobristTable[r][c][getPieceIndex(p)];
+                          }
+                      }
+                      x_moveHistory.clear();
+                      x_positionHistory.clear();
+                      x_isRedTurn = true;
+                      x_positionHistory.add(x_zobristHash ^ x_zobristTurn[0]);
+                      x_selectedPos = null;
+                      x_aiLastMove = null;
+                      x_validMovesDisplay.clear();
+                      x_aiThinking = false;
+                      x_gameOver = false;
+                      x_thinkingSec = 0;
+                      Arrays.fill(x_ttKeys, 0L);
+                      Arrays.fill(x_ttDepths, (byte) 0);
+                      x_ttAge++;
+                      for (int[] killers : x_killerMoves) Arrays.fill(killers, -1);
+                      for (int[] history : x_historyTable) Arrays.fill(history, 0);
+                      syncXiangqiBoard();
+                      updateStatusMsg();
+                      invalidate();
+                      if (triggerAI && x_gameMode == 0 && !x_isRedTurn) triggerXiangqiAiMove();
+                  }
+
+                  private void syncXiangqiBoard() {
+                      for (int r = 0; r < 10; r++) System.arraycopy(x_board[r], 0, x_displayBoard[r], 0, 9);
+                  }
+
+                  private int getPieceIndex(char p) {
+                      int idx = "rnbakcpRNBAKCP".indexOf(p);
+                      return idx >= 0 ? idx : 0;
+                  }
+
+                  private int x_pieceValue(char p) {
+                      switch (Character.toLowerCase(p)) {
+                          case 'k': return 20_000;
+                          case 'r': return 1_000;
+                          case 'c': return 480;
+                          case 'n': return 430;
+                          case 'b': return 210;
+                          case 'a': return 210;
+                          case 'p': return 100;
+                          default: return 0;
+                      }
+                  }
+
+                  private boolean x_isRed(char p) {
+                      return p >= 'A' && p <= 'Z';
+                  }
+
+                  private boolean x_insidePalace(int r, int c, boolean red) {
+                      return c >= 3 && c <= 5 && (red ? r >= 7 && r <= 9 : r >= 0 && r <= 2);
+                  }
+
+                  /** 生成单个棋子的伪合法走法；是否会送将由 x_isLegalMove 统一判断。 */
+                  private int x_genValidMoves(char[][] board, int r, int c, int[] movesList) {
+                      char piece = board[r][c];
+                      if (piece == '.') return 0;
+                      boolean red = x_isRed(piece);
+                      char type = Character.toLowerCase(piece);
+                      int size = 0;
+
+                      if (type == 'r') {
+                          for (int[] d : X_DIRS_CROSS) {
+                              int nr = r + d[0], nc = c + d[1];
+                              while (insideX(nr, nc)) {
+                                  char target = board[nr][nc];
+                                  if (target == '.') {
+                                      movesList[size++] = encodeXMove(r, c, nr, nc);
+                                  } else {
+                                      if (x_isRed(target) != red) movesList[size++] = encodeXMove(r, c, nr, nc);
+                                      break;
+                                  }
+                                  nr += d[0]; nc += d[1];
+                              }
+                          }
+                      } else if (type == 'n') {
+                          for (int[] d : X_DIRS_KNIGHT) {
+                              int nr = r + d[0], nc = c + d[1];
+                              if (!insideX(nr, nc)) continue;
+                              int legR = r + (Math.abs(d[0]) == 2 ? d[0] / 2 : 0);
+                              int legC = c + (Math.abs(d[1]) == 2 ? d[1] / 2 : 0);
+                              if (board[legR][legC] != '.') continue;
+                              if (board[nr][nc] == '.' || x_isRed(board[nr][nc]) != red) {
+                                  movesList[size++] = encodeXMove(r, c, nr, nc);
+                              }
+                          }
+                      } else if (type == 'b') {
+                          for (int[] d : X_DIRS_BISHOP) {
+                              int nr = r + d[0], nc = c + d[1];
+                              if (!insideX(nr, nc)) continue;
+                              if (red && nr < 5) continue;
+                              if (!red && nr > 4) continue;
+                              if (board[r + d[0] / 2][c + d[1] / 2] != '.') continue;
+                              if (board[nr][nc] == '.' || x_isRed(board[nr][nc]) != red) {
+                                  movesList[size++] = encodeXMove(r, c, nr, nc);
+                              }
+                          }
+                      } else if (type == 'a') {
+                          for (int[] d : X_DIRS_ADVISOR) {
+                              int nr = r + d[0], nc = c + d[1];
+                              if (x_insidePalace(nr, nc, red)
+                                      && (board[nr][nc] == '.' || x_isRed(board[nr][nc]) != red)) {
+                                  movesList[size++] = encodeXMove(r, c, nr, nc);
+                              }
+                          }
+                      } else if (type == 'k') {
+                          for (int[] d : X_DIRS_CROSS) {
+                              int nr = r + d[0], nc = c + d[1];
+                              if (x_insidePalace(nr, nc, red)
+                                      && (board[nr][nc] == '.' || x_isRed(board[nr][nc]) != red)) {
+                                  movesList[size++] = encodeXMove(r, c, nr, nc);
+                              }
+                          }
+                          // 飞将：中间无遮挡时可以直接吃掉对方将/帅。
+                          int step = red ? -1 : 1;
+                          int nr = r + step;
+                          while (nr >= 0 && nr < 10 && board[nr][c] == '.') nr += step;
+                          if (nr >= 0 && nr < 10 && Character.toLowerCase(board[nr][c]) == 'k'
+                                  && x_isRed(board[nr][c]) != red) {
+                              movesList[size++] = encodeXMove(r, c, nr, c);
+                          }
+                      } else if (type == 'c') {
+                          for (int[] d : X_DIRS_CROSS) {
+                              int nr = r + d[0], nc = c + d[1];
+                              boolean screened = false;
+                              while (insideX(nr, nc)) {
+                                  char target = board[nr][nc];
+                                  if (!screened) {
+                                      if (target == '.') movesList[size++] = encodeXMove(r, c, nr, nc);
+                                      else screened = true;
+                                  } else if (target != '.') {
+                                      if (x_isRed(target) != red) movesList[size++] = encodeXMove(r, c, nr, nc);
+                                      break;
+                                  }
+                                  nr += d[0]; nc += d[1];
+                              }
+                          }
+                      } else if (type == 'p') {
+                          int dir = red ? -1 : 1;
+                          int nr = r + dir;
+                          if (insideX(nr, c) && (board[nr][c] == '.' || x_isRed(board[nr][c]) != red)) {
+                              movesList[size++] = encodeXMove(r, c, nr, c);
+                          }
+                          boolean crossed = red ? r < 5 : r > 4;
+                          if (crossed) {
+                              int left = c - 1;
+                              if (insideX(r, left) && (board[r][left] == '.' || x_isRed(board[r][left]) != red)) {
+                                  movesList[size++] = encodeXMove(r, c, r, left);
+                              }
+                              int right = c + 1;
+                              if (insideX(r, right) && (board[r][right] == '.' || x_isRed(board[r][right]) != red)) {
+                                  movesList[size++] = encodeXMove(r, c, r, right);
+                              }
+                          }
+                      }
+                      return size;
+                  }
+
+                  private boolean x_isPseudoMovePresent(int r, int c, int move) {
+                      int count = x_genValidMoves(x_board, r, c, x_pieceMoveScratch);
+                      for (int i = 0; i < count; i++) if (x_pieceMoveScratch[i] == move) return true;
+                      return false;
+                  }
+
+                  private boolean x_isKingsFacing(char[][] board) {
+                      int redR = -1, redC = -1, blackR = -1, blackC = -1;
+                      for (int r = 0; r < 10; r++) {
+                          for (int c = 3; c <= 5; c++) {
+                              if (board[r][c] == 'K') { redR = r; redC = c; }
+                              else if (board[r][c] == 'k') { blackR = r; blackC = c; }
+                          }
+                      }
+                      if (redR < 0 || blackR < 0 || redC != blackC) return false;
+                      int from = Math.min(redR, blackR) + 1;
+                      int to = Math.max(redR, blackR);
+                      for (int r = from; r < to; r++) if (board[r][redC] != '.') return false;
+                      return true;
+                  }
+
+                  private boolean x_isInCheck(char[][] board, boolean redKing) {
+                      int kr = -1, kc = -1;
+                      char king = redKing ? 'K' : 'k';
+                      for (int r = 0; r < 10 && kr < 0; r++) {
+                          for (int c = 3; c <= 5; c++) {
+                              if (board[r][c] == king) { kr = r; kc = c; break; }
+                          }
+                      }
+                      if (kr < 0) return true;
+                      boolean enemyRed = !redKing;
+
+                      // 兵/卒攻击。
+                      int pawnSourceR = kr + (enemyRed ? 1 : -1);
+                      if (insideX(pawnSourceR, kc)) {
+                          char p = board[pawnSourceR][kc];
+                          if (p != '.' && x_isRed(p) == enemyRed && Character.toLowerCase(p) == 'p') return true;
+                      }
+                      int leftPawnC = kc - 1;
+                      if (insideX(kr, leftPawnC)) {
+                          char p = board[kr][leftPawnC];
+                          if (p != '.' && x_isRed(p) == enemyRed && Character.toLowerCase(p) == 'p'
+                                  && (enemyRed ? kr < 5 : kr > 4)) return true;
+                      }
+                      int rightPawnC = kc + 1;
+                      if (insideX(kr, rightPawnC)) {
+                          char p = board[kr][rightPawnC];
+                          if (p != '.' && x_isRed(p) == enemyRed && Character.toLowerCase(p) == 'p'
+                                  && (enemyRed ? kr < 5 : kr > 4)) return true;
+                      }
+
+                      // 马攻击，并检查蹩马腿。
+                      for (int[] d : X_DIRS_KNIGHT) {
+                          int hr = kr + d[0], hc = kc + d[1];
+                          if (!insideX(hr, hc)) continue;
+                          char p = board[hr][hc];
+                          if (p == '.' || x_isRed(p) != enemyRed || Character.toLowerCase(p) != 'n') continue;
+                          int dr = kr - hr, dc = kc - hc;
+                          int legR = hr + (Math.abs(dr) == 2 ? dr / 2 : 0);
+                          int legC = hc + (Math.abs(dc) == 2 ? dc / 2 : 0);
+                          if (board[legR][legC] == '.') return true;
+                      }
+
+                      // 将/帅相邻攻击。
+                      for (int[] d : X_DIRS_CROSS) {
+                          int r = kr + d[0], c = kc + d[1];
+                          if (!insideX(r, c)) continue;
+                          char p = board[r][c];
+                          if (p != '.' && x_isRed(p) == enemyRed && Character.toLowerCase(p) == 'k') return true;
+                      }
+
+                      // 车、炮和飞将的直线攻击。
+                      for (int[] d : X_DIRS_CROSS) {
+                          int r = kr + d[0], c = kc + d[1];
+                          int blockers = 0;
+                          while (insideX(r, c)) {
+                              char p = board[r][c];
+                              if (p != '.') {
+                                  if (blockers == 0) {
+                                      if (x_isRed(p) == enemyRed) {
+                                          char type = Character.toLowerCase(p);
+                                          if (type == 'r') return true;
+                                          if (type == 'k' && d[1] == 0) return true;
+                                      }
+                                      blockers = 1;
+                                  } else {
+                                      if (x_isRed(p) == enemyRed && Character.toLowerCase(p) == 'c') return true;
+                                      break;
+                                  }
+                              }
+                              r += d[0]; c += d[1];
+                          }
+                      }
+                      return false;
+                  }
+
+                  private boolean x_isLegalMove(char[][] board, int move, boolean redTurn) {
+                      int sr = x_sr(move), sc = x_sc(move), er = x_er(move), ec = x_ec(move);
+                      if (!insideX(sr, sc) || !insideX(er, ec)) return false;
+                      char moving = board[sr][sc];
+                      if (moving == '.' || x_isRed(moving) != redTurn) return false;
+                      char captured = board[er][ec];
+                      board[er][ec] = moving;
+                      board[sr][sc] = '.';
+                      boolean legal = !x_isInCheck(board, redTurn);
+                      board[sr][sc] = moving;
+                      board[er][ec] = captured;
+                      return legal;
+                  }
+
+                  private boolean x_checkGameOver(char[][] board, boolean redTurn) {
+                      for (int r = 0; r < 10; r++) {
+                          for (int c = 0; c < 9; c++) {
+                              if (board[r][c] == '.' || x_isRed(board[r][c]) != redTurn) continue;
+                              int count = x_genValidMoves(board, r, c, x_pieceMoveScratch);
+                              for (int i = 0; i < count; i++) {
+                                  if (x_isLegalMove(board, x_pieceMoveScratch[i], redTurn)) return false;
+                              }
+                          }
+                      }
+                      return true;
+                  }
+
+                  private void x_markAttack(int[] map, int r, int c) {
+                      if (insideX(r, c)) map[r * 9 + c]++;
+                  }
+
+                  private void x_addPieceAttacks(char[][] board, int r, int c, int[] map) {
+                      char piece = board[r][c];
+                      if (piece == '.') return;
+                      boolean red = x_isRed(piece);
+                      char type = Character.toLowerCase(piece);
+
+                      if (type == 'r') {
+                          for (int[] d : X_DIRS_CROSS) {
+                              int nr = r + d[0], nc = c + d[1];
+                              while (insideX(nr, nc)) {
+                                  x_markAttack(map, nr, nc);
+                                  if (board[nr][nc] != '.') break;
+                                  nr += d[0]; nc += d[1];
+                              }
+                          }
+                      } else if (type == 'c') {
+                          for (int[] d : X_DIRS_CROSS) {
+                              int nr = r + d[0], nc = c + d[1];
+                              boolean screened = false;
+                              while (insideX(nr, nc)) {
+                                  if (!screened) {
+                                      if (board[nr][nc] != '.') screened = true;
+                                  } else if (board[nr][nc] != '.') {
+                                      x_markAttack(map, nr, nc);
+                                      break;
+                                  }
+                                  nr += d[0]; nc += d[1];
+                              }
+                          }
+                      } else if (type == 'n') {
+                          for (int[] d : X_DIRS_KNIGHT) {
+                              int nr = r + d[0], nc = c + d[1];
+                              if (!insideX(nr, nc)) continue;
+                              int legR = r + (Math.abs(d[0]) == 2 ? d[0] / 2 : 0);
+                              int legC = c + (Math.abs(d[1]) == 2 ? d[1] / 2 : 0);
+                              if (board[legR][legC] == '.') x_markAttack(map, nr, nc);
+                          }
+                      } else if (type == 'b') {
+                          for (int[] d : X_DIRS_BISHOP) {
+                              int nr = r + d[0], nc = c + d[1];
+                              if (!insideX(nr, nc)) continue;
+                              if (red && nr < 5) continue;
+                              if (!red && nr > 4) continue;
+                              if (board[r + d[0] / 2][c + d[1] / 2] == '.') x_markAttack(map, nr, nc);
+                          }
+                      } else if (type == 'a') {
+                          for (int[] d : X_DIRS_ADVISOR) {
+                              int nr = r + d[0], nc = c + d[1];
+                              if (x_insidePalace(nr, nc, red)) x_markAttack(map, nr, nc);
+                          }
+                      } else if (type == 'k') {
+                          for (int[] d : X_DIRS_CROSS) {
+                              int nr = r + d[0], nc = c + d[1];
+                              if (x_insidePalace(nr, nc, red)) x_markAttack(map, nr, nc);
+                          }
+                          int step = red ? -1 : 1;
+                          int nr = r + step;
+                          while (nr >= 0 && nr < 10 && board[nr][c] == '.') nr += step;
+                          if (nr >= 0 && nr < 10) x_markAttack(map, nr, c);
+                      } else if (type == 'p') {
+                          int dir = red ? -1 : 1;
+                          x_markAttack(map, r + dir, c);
+                          boolean crossed = red ? r < 5 : r > 4;
+                          if (crossed) {
+                              x_markAttack(map, r, c - 1);
+                              x_markAttack(map, r, c + 1);
+                          }
+                      }
+                  }
+
+                  private void x_buildAttackMap(char[][] board, boolean red, int[] map) {
+                      Arrays.fill(map, 0);
+                      for (int r = 0; r < 10; r++) {
+                          for (int c = 0; c < 9; c++) {
+                              char p = board[r][c];
+                              if (p != '.' && x_isRed(p) == red) x_addPieceAttacks(board, r, c, map);
+                          }
+                      }
+                  }
+
+                  private int x_kingSafety(char[][] board, boolean red) {
+                      char king = red ? 'K' : 'k';
+                      int kr = -1, kc = -1, guards = 0;
+                      for (int r = 0; r < 10; r++) {
+                          for (int c = 0; c < 9; c++) {
+                              char p = board[r][c];
+                              if (p == king) { kr = r; kc = c; }
+                              if (p != '.' && x_isRed(p) == red) {
+                                  char type = Character.toLowerCase(p);
+                                  if (type == 'a' || type == 'b') guards++;
+                              }
+                          }
+                      }
+                      if (kr < 0) return -20_000;
+                      int score = guards * 18;
+                      int openFilePenalty = 0;
+                      boolean blockedUp = false;
+                      for (int r = kr - 1; r >= 0; r--) {
+                          if (board[r][kc] != '.') { blockedUp = true; break; }
+                      }
+                      if (!blockedUp) openFilePenalty += 20;
+                      boolean blockedDown = false;
+                      for (int r = kr + 1; r < 10; r++) {
+                          if (board[r][kc] != '.') { blockedDown = true; break; }
+                      }
+                      if (!blockedDown) openFilePenalty += 20;
+                      if (kc == 4) score += 8;
+                      return score - openFilePenalty;
+                  }
+
+                  private int x_evalBoard(char[][] board) {
+                      return x_evalBoard(board, 0);
+                  }
+
+                  /** 返回红方视角分数。 */
+                  private int x_evalBoard(char[][] board, int ply) {
+                      int safePly = Math.min(ply, MAX_PLY - 1);
+                      int[] redAttack = x_redAttacks[safePly];
+                      int[] blackAttack = x_blackAttacks[safePly];
+                      x_buildAttackMap(board, true, redAttack);
+                      x_buildAttackMap(board, false, blackAttack);
+
+                      int score = 0;
+                      boolean redKing = false, blackKing = false;
+                      for (int r = 0; r < 10; r++) {
+                          for (int c = 0; c < 9; c++) {
+                              char p = board[r][c];
+                              if (p == '.') continue;
+                              boolean red = x_isRed(p);
+                              char type = Character.toLowerCase(p);
+                              if (p == 'K') redKing = true;
+                              else if (p == 'k') blackKing = true;
+                              int idx = getPieceIndex(p);
+                              int value = x_pieceValue(p) + x_pieceSquare[idx][r * 9 + c];
+
+                              if (type != 'k') {
+                                  int mobility = x_genValidMoves(board, r, c, x_pieceMoveScratch);
+                                  int mobilityWeight = (type == 'r' || type == 'c') ? 3 : type == 'n' ? 4 : 1;
+                                  value += mobility * mobilityWeight;
+                              }
+
+                              int enemyAttacks = red ? blackAttack[r * 9 + c] : redAttack[r * 9 + c];
+                              int defenders = red ? redAttack[r * 9 + c] : blackAttack[r * 9 + c];
+                              if (type != 'k' && enemyAttacks > 0) {
+                                  if (defenders == 0) value -= x_pieceValue(p) * 35 / 100;
+                                  else if (enemyAttacks > defenders) value -= x_pieceValue(p) * 15 / 100;
+                              } else if (type != 'k' && defenders > 0) {
+                                  value += Math.min(18, defenders * 5);
+                              }
+
+                              if (red) score += value; else score -= value;
+                          }
+                      }
+                      if (!redKing) return -X_MATE_SCORE;
+                      if (!blackKing) return X_MATE_SCORE;
+                      score += x_kingSafety(board, true);
+                      score -= x_kingSafety(board, false);
+                      if (x_isInCheck(board, true)) score -= 85;
+                      if (x_isInCheck(board, false)) score += 85;
+                      return score;
+                  }
+
+                  /**
+                   * 按已经走过的完整历史匹配开局库。只有某条开局线的前缀与实战完全一致，
+                   * 才会返回它的下一步，避免旧版把互不相关的开局步随机拼接。
+                   */
+                  private int x_getOpeningMove() {
+                      int ply = x_moveHistory.size();
+                      if (ply >= 8 || x_openingLines == null) return -1;
+                      int[] candidates = new int[x_openingLines.length];
+                      int count = 0;
+                      for (int[] line : x_openingLines) {
+                          if (ply >= line.length) continue;
+                          boolean prefixMatches = true;
+                          for (int i = 0; i < ply; i++) {
+                              XMoveRecord record = x_moveHistory.get(i);
+                              if (line[i] != encodeXMove(record.sr, record.sc, record.er, record.ec)) {
+                                  prefixMatches = false;
+                                  break;
+                              }
+                          }
+                          if (!prefixMatches) continue;
+                          int candidate = line[ply];
+                          int sr = x_sr(candidate), sc = x_sc(candidate);
+                          if (!insideX(sr, sc)) continue;
+                          char piece = x_board[sr][sc];
+                          if (piece == '.' || x_isRed(piece) != x_isRedTurn) continue;
+                          if (!x_isPseudoMovePresent(sr, sc, candidate)) continue;
+                          if (!x_isLegalMove(x_board, candidate, x_isRedTurn)) continue;
+                          candidates[count++] = candidate;
+                      }
+                      if (count == 0) return -1;
+                      // 同一局面稳定选择，既保留变化，也方便复现问题。
+                      int index = (int) ((x_zobristHash ^ (x_zobristHash >>> 32)) & 0x7FFFFFFF) % count;
+                      return candidates[index];
+                  }
+
+                  private int x_pieceSquareDelta(char piece, int sr, int sc, int er, int ec) {
+                      int idx = getPieceIndex(piece);
+                      return x_pieceSquare[idx][er * 9 + ec] - x_pieceSquare[idx][sr * 9 + sc];
+                  }
+
+                  private int x_scoreMove(int move, int ply, int ttMove) {
+                      if (move == ttMove) return 2_000_000;
+                      int sr = x_sr(move), sc = x_sc(move), er = x_er(move), ec = x_ec(move);
+                      char attacker = x_board[sr][sc];
+                      char victim = x_board[er][ec];
+                      if (victim != '.') {
+                          return 1_000_000 + x_pieceValue(victim) * 32 - x_pieceValue(attacker)
+                                  + Math.max(-200, Math.min(200, x_pieceSquareDelta(attacker, sr, sc, er, ec)));
+                      }
+                      int safePly = Math.min(ply, MAX_PLY - 1);
+                      if (x_killerMoves[safePly][0] == move) return 900_000;
+                      if (x_killerMoves[safePly][1] == move) return 850_000;
+                      int history = x_historyTable[getPieceIndex(attacker)][er * 9 + ec];
+                      return history + x_pieceSquareDelta(attacker, sr, sc, er, ec) * 8;
+                  }
+
+                  /**
+                   * 生成当前一方的走法并按 TT、吃子、killer、history、位置增益排序。
+                   * 不在这里做合法性筛选，避免生成阶段重复走/还原棋盘；搜索循环中统一验证。
+                   */
+                  private int x_generateMoves(int ply, boolean redTurn, int ttMove, boolean capturesOnly) {
+                      int safePly = Math.min(ply, MAX_PLY - 1);
+                      int[] moves = x_moveBuffer[safePly];
+                      int[] scores = x_scoreBuffer[safePly];
+                      int count = 0;
+                      for (int r = 0; r < 10; r++) {
+                          for (int c = 0; c < 9; c++) {
+                              char piece = x_board[r][c];
+                              if (piece == '.' || x_isRed(piece) != redTurn) continue;
+                              int generated = x_genValidMoves(x_board, r, c, x_pieceMoveScratch);
+                              for (int i = 0; i < generated && count < MAX_X_MOVES; i++) {
+                                  int move = x_pieceMoveScratch[i];
+                                  if (capturesOnly && x_board[x_er(move)][x_ec(move)] == '.') continue;
+                                  moves[count] = move;
+                                  scores[count] = x_scoreMove(move, safePly, ttMove);
+                                  count++;
+                              }
+                          }
+                      }
+
+                      // 插入排序在象棋通常 30~50 个候选上比对象数组排序更省分配、更稳定。
+                      for (int i = 1; i < count; i++) {
+                          int move = moves[i];
+                          int score = scores[i];
+                          int j = i - 1;
+                          while (j >= 0 && scores[j] < score) {
+                              moves[j + 1] = moves[j];
+                              scores[j + 1] = scores[j];
+                              j--;
+                          }
+                          moves[j + 1] = move;
+                          scores[j + 1] = score;
+                      }
+                      return count;
+                  }
+
+                  private boolean x_hasNullMoveMaterial(boolean redTurn) {
+                      int active = 0;
+                      int value = 0;
+                      for (int r = 0; r < 10; r++) {
+                          for (int c = 0; c < 9; c++) {
+                              char p = x_board[r][c];
+                              if (p == '.' || x_isRed(p) != redTurn) continue;
+                              char type = Character.toLowerCase(p);
+                              if (type == 'r' || type == 'c' || type == 'n') active++;
+                              if (type != 'k' && type != 'a' && type != 'b') value += x_pieceValue(p);
+                          }
+                      }
+                      return active >= 2 && value >= 900;
+                  }
+
+                  private long x_hashAfterMove(long hash, int move, char moving, char captured) {
+                      int sr = x_sr(move), sc = x_sc(move), er = x_er(move), ec = x_ec(move);
+                      long next = hash;
+                      next ^= x_zobristTable[sr][sc][getPieceIndex(moving)];
+                      if (captured != '.') next ^= x_zobristTable[er][ec][getPieceIndex(captured)];
+                      next ^= x_zobristTable[er][ec][getPieceIndex(moving)];
+                      next ^= x_zobristTurn[0] ^ x_zobristTurn[1];
+                      return next;
+                  }
+
+                  private boolean x_isRepetition(long hash, int ply) {
+                      int occurrences = 0;
+                      // 历史列表最后一个是当前实战局面，搜索路径里也会出现一次，所以跳过最后一个历史项。
+                      for (int i = 0; i + 1 < x_positionHistory.size(); i++) {
+                          if (x_positionHistory.get(i) == hash) occurrences++;
+                      }
+                      int limit = Math.min(ply, MAX_PLY - 1);
+                      for (int i = 0; i <= limit; i++) {
+                          if (x_pathHashes[i] == hash) occurrences++;
+                      }
+                      return occurrences >= 3;
+                  }
+
+                  private int x_sideEval(boolean redTurn, int ply) {
+                      int redScore = x_evalBoard(x_board, ply);
+                      return redTurn ? redScore : -redScore;
+                  }
+
+                  private void x_applySearchMove(int move) {
+                      int sr = x_sr(move), sc = x_sc(move), er = x_er(move), ec = x_ec(move);
+                      x_board[er][ec] = x_board[sr][sc];
+                      x_board[sr][sc] = '.';
+                  }
+
+                  private void x_restoreSearchMove(int move, char captured) {
+                      int sr = x_sr(move), sc = x_sc(move), er = x_er(move), ec = x_ec(move);
+                      x_board[sr][sc] = x_board[er][ec];
+                      x_board[er][ec] = captured;
+                  }
+
+                  /**
+                   * 静止搜索：被将军时搜索全部解将步；平静局面只搜索吃子。
+                   * 这样既避免“看到一半吃子”的地平线效应，也不再像旧版那样无限扩大普通走法。
+                   */
+                  private int x_quiesce(int alpha, int beta, boolean redTurn, long hash, int ply, int qDepth) {
+                      if (!searchActive()) return x_sideEval(redTurn, ply);
+                      if (ply >= MAX_PLY - 2 || qDepth >= 12) return x_sideEval(redTurn, ply);
+                      if (x_isRepetition(hash, ply)) return 0;
+
+                      boolean inCheck = x_isInCheck(x_board, redTurn);
+                      int standPat = x_sideEval(redTurn, ply);
+                      if (!inCheck) {
+                          if (standPat >= beta) return standPat;
+                          if (standPat > alpha) alpha = standPat;
+                      }
+
+                      int ttMove = -1;
+                      int ttIdx = (int) (hash & TT_MASK);
+                      if (x_ttKeys[ttIdx] == hash) ttMove = x_ttBestMoves[ttIdx];
+                      int count = x_generateMoves(ply, redTurn, ttMove, !inCheck);
+                      int legal = 0;
+                      for (int i = 0; i < count && searchActive(); i++) {
+                          int move = x_moveBuffer[Math.min(ply, MAX_PLY - 1)][i];
+                          int er = x_er(move), ec = x_ec(move);
+                          char captured = x_board[er][ec];
+                          if (!inCheck && captured == '.') continue;
+                          if (!x_isLegalMove(x_board, move, redTurn)) continue;
+
+                          // Delta pruning：明显不足以抬高 alpha 的低价值吃子可跳过；将军局面绝不裁剪。
+                          if (!inCheck && captured != '.'
+                                  && standPat + x_pieceValue(captured) + 180 < alpha
+                                  && Character.toLowerCase(captured) != 'k') {
+                              continue;
+                          }
+
+                          legal++;
+                          int sr = x_sr(move), sc = x_sc(move);
+                          char moving = x_board[sr][sc];
+                          long nextHash = x_hashAfterMove(hash, move, moving, captured);
+                          x_applySearchMove(move);
+                          x_pathHashes[ply + 1] = nextHash;
+                          int score;
+                          try {
+                              score = -x_quiesce(-beta, -alpha, !redTurn, nextHash, ply + 1, qDepth + 1);
+                          } finally {
+                              x_restoreSearchMove(move, captured);
+                          }
+                          if (score >= beta) return score;
+                          if (score > alpha) alpha = score;
+                      }
+                      if (inCheck && legal == 0) return -X_MATE_SCORE + ply;
+                      return alpha;
+                  }
+
+                  private int x_quiesce(int alpha, int beta, boolean isMax, int qDepth) {
+                      long hash = x_zobristHash ^ x_zobristTurn[isMax ? 0 : 1];
+                      x_pathHashes[0] = hash;
+                      return x_quiesce(alpha, beta, isMax, hash, 0, qDepth);
+                  }
+
+                  /**
+                   * Negamax + PVS + TT + 空步裁剪 + LMR。
+                   * 分数始终是“当前走棋方视角”，从而消除旧版红方最大/黑方最小两套分支的边界错误。
+                   */
+                  private int x_negamax(int depth, int alpha, int beta, boolean redTurn,
+                                        long hash, int ply, boolean allowNull) {
+                      if (!searchActive()) return x_sideEval(redTurn, ply);
+                      if (ply >= MAX_PLY - 2) return x_sideEval(redTurn, ply);
+                      if (x_isRepetition(hash, ply)) return 0;
+
+                      boolean inCheck = x_isInCheck(x_board, redTurn);
+                      if (inCheck && depth > 0 && ply < 14) depth++;
+                      if (depth <= 0) return x_quiesce(alpha, beta, redTurn, hash, ply, 0);
+
+                      int originalAlpha = alpha;
+                      int originalBeta = beta;
+                      int ttIdx = (int) (hash & TT_MASK);
+                      int ttMove = -1;
+                      if (x_ttKeys[ttIdx] == hash) {
+                          ttMove = x_ttBestMoves[ttIdx];
+                          if (x_ttDepths[ttIdx] >= depth) {
+                              int ttScore = scoreFromTt(x_ttScores[ttIdx], ply, X_MATE_SCORE);
+                              byte flag = x_ttFlags[ttIdx];
+                              if (flag == TT_EXACT) return ttScore;
+                              if (flag == TT_LOWER) alpha = Math.max(alpha, ttScore);
+                              else if (flag == TT_UPPER) beta = Math.min(beta, ttScore);
+                              if (alpha >= beta) return ttScore;
+                          }
+                      }
+
+                      // 正确的空窗空步裁剪。残局/被将军时禁用，降低 zugzwang 误判。
+                      if (allowNull && depth >= 4 && !inCheck && x_hasNullMoveMaterial(redTurn)) {
+                          int reduction = depth >= 7 ? 3 : 2;
+                          long nullHash = hash ^ x_zobristTurn[0] ^ x_zobristTurn[1];
+                          x_pathHashes[ply + 1] = nullHash;
+                          int nullScore = -x_negamax(depth - 1 - reduction, -beta, -beta + 1,
+                                  !redTurn, nullHash, ply + 1, false);
+                          if (!searchActive()) return nullScore;
+                          if (nullScore >= beta) return nullScore;
+                      }
+
+                      int count = x_generateMoves(ply, redTurn, ttMove, false);
+                      int legalCount = 0;
+                      int bestMove = -1;
+                      int bestScore = -X_MATE_SCORE - 1;
+                      int safePly = Math.min(ply, MAX_PLY - 1);
+
+                      for (int i = 0; i < count && searchActive(); i++) {
+                          int move = x_moveBuffer[safePly][i];
+                          if (!x_isLegalMove(x_board, move, redTurn)) continue;
+                          legalCount++;
+                          int sr = x_sr(move), sc = x_sc(move), er = x_er(move), ec = x_ec(move);
+                          char moving = x_board[sr][sc];
+                          char captured = x_board[er][ec];
+                          boolean quiet = captured == '.';
+                          long nextHash = x_hashAfterMove(hash, move, moving, captured);
+                          x_applySearchMove(move);
+                          x_pathHashes[ply + 1] = nextHash;
+
+                          int score;
+                          try {
+                              int childDepth = depth - 1;
+                              int reduction = 0;
+                              if (quiet && !inCheck && depth >= 4 && legalCount >= 5) {
+                                  reduction = legalCount >= 12 && depth >= 6 ? 2 : 1;
+                              }
+                              if (legalCount == 1) {
+                                  score = -x_negamax(childDepth, -beta, -alpha,
+                                          !redTurn, nextHash, ply + 1, true);
+                              } else {
+                                  score = -x_negamax(Math.max(0, childDepth - reduction), -alpha - 1, -alpha,
+                                          !redTurn, nextHash, ply + 1, true);
+                                  if (reduction > 0 && score > alpha) {
+                                      score = -x_negamax(childDepth, -alpha - 1, -alpha,
+                                              !redTurn, nextHash, ply + 1, true);
+                                  }
+                                  if (score > alpha && score < beta) {
+                                      score = -x_negamax(childDepth, -beta, -alpha,
+                                              !redTurn, nextHash, ply + 1, true);
+                                  }
+                              }
+                          } finally {
+                              x_restoreSearchMove(move, captured);
+                          }
+
+                          if (score > bestScore) {
+                              bestScore = score;
+                              bestMove = move;
+                              if (ply == 0) x_rootBestMove = move;
+                          }
+                          if (score > alpha) alpha = score;
+                          if (alpha >= beta) {
+                              if (quiet) {
+                                  if (x_killerMoves[safePly][0] != move) {
+                                      x_killerMoves[safePly][1] = x_killerMoves[safePly][0];
+                                      x_killerMoves[safePly][0] = move;
+                                  }
+                                  int pieceIndex = getPieceIndex(moving);
+                                  int target = er * 9 + ec;
+                                  int bonus = Math.min(8_000, depth * depth * 12);
+                                  x_historyTable[pieceIndex][target] = Math.min(1_000_000,
+                                          x_historyTable[pieceIndex][target] + bonus);
+                              }
+                              break;
+                          }
+                      }
+
+                      if (legalCount == 0) return -X_MATE_SCORE + ply;
+                      if (bestMove == -1) return x_sideEval(redTurn, ply);
+
+                      if (searchActive()) {
+                          byte flag = bestScore <= originalAlpha ? TT_UPPER
+                                  : bestScore >= originalBeta ? TT_LOWER : TT_EXACT;
+                          boolean replace = x_ttKeys[ttIdx] != hash
+                                  || x_ttAges[ttIdx] != x_ttAge
+                                  || x_ttDepths[ttIdx] <= depth;
+                          if (replace) {
+                              x_ttKeys[ttIdx] = hash;
+                              x_ttDepths[ttIdx] = (byte) Math.min(127, depth);
+                              x_ttScores[ttIdx] = scoreToTt(bestScore, ply, X_MATE_SCORE);
+                              x_ttFlags[ttIdx] = flag;
+                              x_ttBestMoves[ttIdx] = bestMove;
+                              x_ttAges[ttIdx] = x_ttAge;
+                          }
+                      }
+                      return bestScore;
+                  }
+
+                  /** 保留旧方法签名，内部改由新的 Negamax 搜索实现。 */
+                  private int x_alphaBeta(int depth, int alpha, int beta, boolean isMax, long hash, boolean isNull) {
+                      x_pathHashes[0] = hash;
+                      return x_negamax(Math.min(depth, MAX_PLY - 2), alpha, beta, isMax, hash, 0, !isNull);
+                  }
+
+                  private int x_iterativeDeepening(int maxDepth) {
+                      x_lastCompletedBestMove = -1;
+                      int previousScore = 0;
+                      int safeDepth = Math.min(maxDepth, MAX_PLY - 2);
+                      long rootHash = x_zobristHash ^ x_zobristTurn[x_isRedTurn ? 0 : 1];
+                      for (int depth = 1; depth <= safeDepth && searchActive(); depth++) {
+                          x_rootBestMove = -1;
+                          x_pathHashes[0] = rootHash;
+                          int alpha = -X_MATE_SCORE - 2;
+                          int beta = X_MATE_SCORE + 2;
+                          if (depth >= 3) {
+                              int window = 70 + depth * 18;
+                              alpha = previousScore - window;
+                              beta = previousScore + window;
+                          }
+                          int score = x_negamax(depth, alpha, beta, x_isRedTurn, rootHash, 0, true);
+                          if (!searchActive()) break;
+                          if (score <= alpha || score >= beta) {
+                              x_rootBestMove = -1;
+                              x_pathHashes[0] = rootHash;
+                              score = x_negamax(depth, -X_MATE_SCORE - 2, X_MATE_SCORE + 2,
+                                      x_isRedTurn, rootHash, 0, true);
+                              if (!searchActive()) break;
+                          }
+                          if (x_rootBestMove != -1) x_lastCompletedBestMove = x_rootBestMove;
+                          previousScore = score;
+                          if (Math.abs(score) >= X_MATE_SCORE - 100) break;
+                      }
+                      return x_lastCompletedBestMove;
+                  }
+
+                  private long x_timeBudgetMillis(int depth) {
+                      if (depth <= 3) return 800L;
+                      if (depth <= 6) return 2_600L;
+                      if (depth <= 9) return 7_000L;
+                      return Math.min(20_000L, 7_000L + (depth - 9L) * 850L);
+                  }
+
+                  private void triggerXiangqiAiMove() {
+                      if (x_aiThinking || x_gameOver) return;
+                      x_aiThinking = true;
+                      x_thinkingSec = 0;
+                      rollbackAfterCancel = false;
+                      x_ttAge++;
+                      int token = beginSearch(x_timeBudgetMillis(x_aiDepth));
+                      updateStatusMsg();
+                      invalidate();
+                      removeCallbacks(timerRunnable);
+                      postDelayed(timerRunnable, 1000L);
+
+                      aiExecutor.execute(() -> {
+                          int bestMove = -1;
+                          Throwable error = null;
+                          try {
+                              bestMove = x_getOpeningMove();
+                              if (bestMove == -1) bestMove = x_iterativeDeepening(x_aiDepth);
+                              if (bestMove == -1) {
+                                  long hash = x_zobristHash ^ x_zobristTurn[x_isRedTurn ? 0 : 1];
+                                  int count = x_generateMoves(0, x_isRedTurn, -1, false);
+                                  for (int i = 0; i < count; i++) {
+                                      int candidate = x_moveBuffer[0][i];
+                                      if (x_isLegalMove(x_board, candidate, x_isRedTurn)) {
+                                          bestMove = candidate;
+                                          break;
+                                      }
+                                  }
+                                  x_pathHashes[0] = hash;
+                              }
+                          } catch (Throwable t) {
+                              error = t;
+                          }
+
+                          final int chosen = bestMove;
+                          final Throwable searchError = error;
+                          final boolean canceledBeforePost = !tokenStillCurrent(token) || !keepThinking;
+                          post(() -> {
+                              boolean canceled = canceledBeforePost || !tokenStillCurrent(token) || !keepThinking;
+                              removeCallbacks(timerRunnable);
+                              x_aiThinking = false;
+                              keepThinking = false;
+                              if (canceled) {
+                                  if (rollbackAfterCancel) {
+                                      x_undoSingleMove();
+                                      x_statusMsg = "思考已中断，已撤回刚才一步";
+                                      rollbackAfterCancel = false;
+                                  } else {
+                                      x_statusMsg = "思考已中断";
+                                  }
+                                  invalidate();
+                                  return;
+                              }
+                              if (searchError != null) searchError.printStackTrace();
+                              if (chosen != -1 && x_isLegalMove(x_board, chosen, x_isRedTurn)) {
+                                  x_makeMove(x_sr(chosen), x_sc(chosen), x_er(chosen), x_ec(chosen));
+                                  if (x_checkGameOver(x_board, x_isRedTurn)) {
+                                      boolean inCheck = x_isInCheck(x_board, x_isRedTurn);
+                                      x_statusMsg = inCheck
+                                              ? "绝杀！" + (x_isRedTurn ? "黑" : "红") + "方胜利！"
+                                              : "困毙！" + (x_isRedTurn ? "黑" : "红") + "方胜利！(对方无棋可走)";
+                                      x_gameOver = true;
+                                  } else {
+                                      updateStatusMsg();
+                                  }
+                              } else {
+                                  boolean inCheck = x_isInCheck(x_board, x_isRedTurn);
+                                  x_statusMsg = inCheck ? "无路可解将，你胜利了！" : "AI无合法走法，你胜利了！";
+                                  x_gameOver = true;
+                              }
+                              invalidate();
+                          });
+                      });
+                  }
+
+                  private void x_makeMove(int sr, int sc, int er, int ec) {
+                      char moving = x_board[sr][sc];
+                      char captured = x_board[er][ec];
+                      x_zobristHash ^= x_zobristTable[sr][sc][getPieceIndex(moving)];
+                      if (captured != '.') x_zobristHash ^= x_zobristTable[er][ec][getPieceIndex(captured)];
+                      x_zobristHash ^= x_zobristTable[er][ec][getPieceIndex(moving)];
+
+                      x_board[er][ec] = moving;
+                      x_board[sr][sc] = '.';
+                      x_moveHistory.add(new XMoveRecord(sr, sc, er, ec, captured));
+                      x_aiLastMove = new int[]{sr, sc, er, ec};
+                      x_selectedPos = null;
+                      x_validMovesDisplay.clear();
+                      x_isRedTurn = !x_isRedTurn;
+                      x_positionHistory.add(x_zobristHash ^ x_zobristTurn[x_isRedTurn ? 0 : 1]);
+                      syncXiangqiBoard();
+                  }
+
+                  private boolean x_undoSingleMove() {
+                      if (x_moveHistory.isEmpty()) return false;
+                      if (!x_positionHistory.isEmpty()) x_positionHistory.remove(x_positionHistory.size() - 1);
+                      XMoveRecord move = x_moveHistory.remove(x_moveHistory.size() - 1);
+                      char moving = x_board[move.er][move.ec];
+
+                      x_zobristHash ^= x_zobristTable[move.er][move.ec][getPieceIndex(moving)];
+                      if (move.captured != '.') {
+                          x_zobristHash ^= x_zobristTable[move.er][move.ec][getPieceIndex(move.captured)];
+                      }
+                      x_zobristHash ^= x_zobristTable[move.sr][move.sc][getPieceIndex(moving)];
+
+                      x_board[move.sr][move.sc] = moving;
+                      x_board[move.er][move.ec] = move.captured;
+                      x_isRedTurn = !x_isRedTurn;
+                      x_gameOver = false;
+                      if (x_moveHistory.isEmpty()) {
+                          x_aiLastMove = null;
+                      } else {
+                          XMoveRecord last = x_moveHistory.get(x_moveHistory.size() - 1);
+                          x_aiLastMove = new int[]{last.sr, last.sc, last.er, last.ec};
+                      }
+                      x_selectedPos = null;
+                      x_validMovesDisplay.clear();
+                      syncXiangqiBoard();
+                      return true;
+                  }
+
+                  private void x_undoMove() {
+                      int wanted = x_gameMode == 0 ? 2 : 1;
+                      int pops = Math.min(wanted, x_moveHistory.size());
+                      if (pops == 0) return;
+                      for (int i = 0; i < pops; i++) x_undoSingleMove();
+                      updateStatusMsg();
+                      invalidate();
+                  }
+
+                  // ================= 绘图与 UI 引擎 =================
+
+                  @Override
+                  protected void onDraw(Canvas canvas) {
+                      super.onDraw(canvas);
+                      w = getWidth();
+                      margin = w * 0.06f;
+                      canvas.drawColor(currentGameType == 0 ? Color.WHITE : COLOR_X_BOARD);
+
+                      String modeText = currentGameType == 0
+                              ? (g_gameMode == 0 ? "模式: 人机对战" : "模式: 双人对战")
+                              : (x_gameMode == 0 ? "模式: 人机对战" : "模式: 双人对战");
+                      float modeBtnW = w * 0.40f;
+                      float modeBtnH = w * 0.12f;
+                      float modeBtnX = w / 2f - modeBtnW / 2f;
+                      float modeBtnY = margin;
+                      drawBtn(canvas, modeText, modeBtnX, modeBtnY, modeBtnX + modeBtnW,
+                              modeBtnY + modeBtnH, COLOR_BTN_GRAY, Color.BLACK, w * 0.04f);
+
+                      float ruleBtnW = w * 0.10f;
+                      float ruleBtnX = w - margin - ruleBtnW;
+                      drawBtn(canvas, "❓", ruleBtnX, margin, ruleBtnX + ruleBtnW,
+                              margin + ruleBtnW, COLOR_BTN_LIGHT, Color.BLACK, w * 0.05f);
+
+                      float boardWidth = w - 2f * margin;
+                      float xiangqiHeight = boardWidth / 8f * 9f;
+                      float heightDiff = xiangqiHeight - boardWidth;
+                      if (currentGameType == 0) {
+                          startY = margin + w * 0.25f;
+                          drawGomokuUI(canvas, boardWidth);
+                      } else {
+                          startY = margin + w * 0.25f - heightDiff / 2f;
+                          drawXiangqiUI(canvas, boardWidth);
+                      }
+                  }
+
+                  private void drawGomokuUI(Canvas canvas, float size) {
+                      g_boardSize = size;
+                      g_cellSize = g_boardSize / 14f;
+                      startX = margin;
+
+                      paint.setColor(Color.BLACK);
+                      paint.setStyle(Paint.Style.STROKE);
+                      paint.setStrokeWidth(5f);
+                      canvas.drawRect(startX, startY, startX + g_boardSize, startY + g_boardSize, paint);
+                      paint.setStrokeWidth(2f);
+                      for (int i = 1; i < 14; i++) {
+                          canvas.drawLine(startX, startY + i * g_cellSize,
+                                  startX + g_boardSize, startY + i * g_cellSize, paint);
+                          canvas.drawLine(startX + i * g_cellSize, startY,
+                                  startX + i * g_cellSize, startY + g_boardSize, paint);
+                      }
+                      paint.setStyle(Paint.Style.FILL);
+                      for (int ri = 0; ri < 3; ri++) {
+                          int r = ri == 0 ? 3 : ri == 1 ? 7 : 11;
+                          for (int ci = 0; ci < 3; ci++) {
+                              int c = ci == 0 ? 3 : ci == 1 ? 7 : 11;
+                              canvas.drawCircle(startX + c * g_cellSize, startY + r * g_cellSize,
+                                      g_cellSize * 0.15f, paint);
+                          }
+                      }
+
+                      for (int r = 0; r < G_BOARD_SIZE; r++) {
+                          for (int c = 0; c < G_BOARD_SIZE; c++) {
+                              int stone = g_displayBoard[r][c];
+                              if (stone == 0) continue;
+                              float cx = startX + c * g_cellSize;
+                              float cy = startY + r * g_cellSize;
+                              paint.setColor(stone == 1 ? Color.BLACK : Color.WHITE);
+                              paint.setStyle(Paint.Style.FILL);
+                              canvas.drawCircle(cx, cy, g_cellSize * 0.42f, paint);
+                              if (stone == 2) {
+                                  paint.setColor(Color.BLACK);
+                                  paint.setStyle(Paint.Style.STROKE);
+                                  paint.setStrokeWidth(2f);
+                                  canvas.drawCircle(cx, cy, g_cellSize * 0.42f, paint);
+                                  paint.setStyle(Paint.Style.FILL);
+                              }
+                              if (g_lastMoveHighlight != null
+                                      && g_lastMoveHighlight[0] == r && g_lastMoveHighlight[1] == c) {
+                                  paint.setColor(Color.RED);
+                                  canvas.drawCircle(cx, cy, g_cellSize * 0.1f, paint);
+                              }
+                          }
+                      }
+                      drawBottomMenu(canvas, startY + g_boardSize, g_statusMsg, g_aiThinking, g_aiDepth);
+                  }
+
+                  private void drawXiangqiUI(Canvas canvas, float width) {
+                      x_boardWidth = width;
+                      x_cellSize = x_boardWidth / 8f;
+                      x_boardHeight = x_cellSize * 9f;
+                      startX = margin;
+
+                      paint.setColor(Color.BLACK);
+                      paint.setStyle(Paint.Style.STROKE);
+                      paint.setStrokeWidth(4f);
+                      for (int r = 0; r < 10; r++) {
+                          canvas.drawLine(startX, startY + r * x_cellSize,
+                                  startX + x_boardWidth, startY + r * x_cellSize, paint);
+                      }
+                      for (int c = 0; c < 9; c++) {
+                          if (c == 0 || c == 8) {
+                              canvas.drawLine(startX + c * x_cellSize, startY,
+                                      startX + c * x_cellSize, startY + x_boardHeight, paint);
+                          } else {
+                              canvas.drawLine(startX + c * x_cellSize, startY,
+                                      startX + c * x_cellSize, startY + 4f * x_cellSize, paint);
+                              canvas.drawLine(startX + c * x_cellSize, startY + 5f * x_cellSize,
+                                      startX + c * x_cellSize, startY + x_boardHeight, paint);
+                          }
+                      }
+                      canvas.drawLine(startX + 3f * x_cellSize, startY,
+                              startX + 5f * x_cellSize, startY + 2f * x_cellSize, paint);
+                      canvas.drawLine(startX + 5f * x_cellSize, startY,
+                              startX + 3f * x_cellSize, startY + 2f * x_cellSize, paint);
+                      canvas.drawLine(startX + 3f * x_cellSize, startY + 7f * x_cellSize,
+                              startX + 5f * x_cellSize, startY + 9f * x_cellSize, paint);
+                      canvas.drawLine(startX + 5f * x_cellSize, startY + 7f * x_cellSize,
+                              startX + 3f * x_cellSize, startY + 9f * x_cellSize, paint);
+
+                      paint.setStyle(Paint.Style.FILL);
+                      paint.setColor(Color.BLACK);
+                      paint.setTextSize(x_cellSize * 0.6f);
+                      paint.setTextAlign(Paint.Align.CENTER);
+                      Paint.FontMetrics riverFm = paint.getFontMetrics();
+                      float riverY = startY + 4.5f * x_cellSize - (riverFm.descent + riverFm.ascent) / 2f;
+                      canvas.drawText("楚 河            汉 界", startX + 4f * x_cellSize, riverY, paint);
+
+                      if (x_aiLastMove != null) {
+                          paint.setColor(COLOR_CYAN);
+                          paint.setStyle(Paint.Style.STROKE);
+                          paint.setStrokeWidth(6f);
+                          float radius = x_cellSize * 0.45f;
+                          canvas.drawRoundRect(startX + x_aiLastMove[1] * x_cellSize - radius,
+                                  startY + x_aiLastMove[0] * x_cellSize - radius,
+                                  startX + x_aiLastMove[1] * x_cellSize + radius,
+                                  startY + x_aiLastMove[0] * x_cellSize + radius, 8f, 8f, paint);
+                          canvas.drawRoundRect(startX + x_aiLastMove[3] * x_cellSize - radius,
+                                  startY + x_aiLastMove[2] * x_cellSize - radius,
+                                  startX + x_aiLastMove[3] * x_cellSize + radius,
+                                  startY + x_aiLastMove[2] * x_cellSize + radius, 8f, 8f, paint);
+                      }
+
+                      boolean redInCheck = x_isInCheck(x_displayBoard, true);
+                      boolean blackInCheck = x_isInCheck(x_displayBoard, false);
+                      String pieceMap = "rnbakcpRNBAKCP";
+                      String pieceNames = "车马象士将炮卒车马相仕帅炮兵";
+                      for (int r = 0; r < 10; r++) {
+                          for (int c = 0; c < 9; c++) {
+                              char piece = x_displayBoard[r][c];
+                              if (piece == '.') continue;
+                              float cx = startX + c * x_cellSize;
+                              float cy = startY + r * x_cellSize;
+                              float radius = x_cellSize * 0.42f;
+                              int pieceColor = x_isRed(piece) ? COLOR_CRIMSON : Color.BLACK;
+
+                              paint.setStyle(Paint.Style.FILL);
+                              paint.setColor(COLOR_PAPAYA);
+                              canvas.drawCircle(cx, cy, radius, paint);
+                              paint.setStyle(Paint.Style.STROKE);
+                              paint.setStrokeWidth(4f);
+                              paint.setColor(pieceColor);
+                              canvas.drawCircle(cx, cy, radius, paint);
+                              canvas.drawCircle(cx, cy, radius * 0.8f, paint);
+                              paint.setStyle(Paint.Style.FILL);
+                              paint.setTextSize(radius * 1.2f);
+                              paint.setTextAlign(Paint.Align.CENTER);
+                              int nameIndex = pieceMap.indexOf(piece);
+                              if (nameIndex >= 0) {
+                                  String text = String.valueOf(pieceNames.charAt(nameIndex));
+                                  Paint.FontMetrics fm = paint.getFontMetrics();
+                                  canvas.drawText(text, cx, cy - (fm.descent + fm.ascent) / 2f, paint);
+                              }
+
+                              if (x_selectedPos != null && x_selectedPos[0] == r && x_selectedPos[1] == c) {
+                                  paint.setColor(COLOR_GREEN);
+                                  paint.setStyle(Paint.Style.STROKE);
+                                  paint.setStrokeWidth(6f);
+                                  canvas.drawCircle(cx, cy, radius + 4f, paint);
+                              }
+                              if ((piece == 'K' && redInCheck) || (piece == 'k' && blackInCheck)) {
+                                  paint.setColor(Color.RED);
+                                  paint.setStyle(Paint.Style.STROKE);
+                                  paint.setStrokeWidth(8f);
+                                  canvas.drawCircle(cx, cy, radius + 8f, paint);
+                              }
+                          }
+                      }
+
+                      paint.setStyle(Paint.Style.FILL);
+                      paint.setColor(COLOR_GREEN);
+                      for (int move : x_validMovesDisplay) {
+                          int mr = x_er(move), mc = x_ec(move);
+                          canvas.drawCircle(startX + mc * x_cellSize, startY + mr * x_cellSize,
+                                  x_cellSize * 0.15f, paint);
+                      }
+                      drawBottomMenu(canvas, startY + x_boardHeight, x_statusMsg, x_aiThinking, x_aiDepth);
+                  }
+
+                  private void drawBottomMenu(Canvas canvas, float baseTop, String message,
+                                              boolean thinking, int depth) {
+                      float bottomY = baseTop + w * 0.11f;
+                      boolean checkMessage = message != null && message.contains("[将军!]");
+                      paint.setColor(checkMessage ? COLOR_DARK_RED : Color.RED);
+                      paint.setStyle(Paint.Style.FILL);
+                      paint.setTextSize(w * 0.055f);
+                      paint.setTextAlign(Paint.Align.CENTER);
+                      canvas.drawText(message == null ? "" : message, w / 2f, bottomY, paint);
+
+                      float btnW = w * 0.20f;
+                      float btnH = w * 0.096f;
+                      float space = (w - 3f * btnW) / 4f;
+                      float row1Y = bottomY + w * 0.06f;
+
+                      drawBtn(canvas, thinking ? "中断" : "悔棋", space, row1Y,
+                              space + btnW, row1Y + btnH,
+                              thinking ? COLOR_ORANGE : COLOR_BTN_GRAY,
+                              thinking ? Color.WHITE : Color.BLACK, w * 0.04f);
+                      drawBtn(canvas, "重玩", space * 2f + btnW, row1Y,
+                              space * 2f + btnW * 2f, row1Y + btnH,
+                              COLOR_GREEN, Color.WHITE, w * 0.04f);
+                      drawBtn(canvas, "退出", space * 3f + btnW * 2f, row1Y,
+                              space * 3f + btnW * 3f, row1Y + btnH,
+                              COLOR_RED, Color.WHITE, w * 0.04f);
+
+                      int mode = currentGameType == 0 ? g_gameMode : x_gameMode;
+                      float row3Y = row1Y;
+                      if (mode == 0) {
+                          float row2Y = row1Y + btnH + w * 0.04f;
+                          int d1 = currentGameType == 0 ? 4 : 3;
+                          int d2 = currentGameType == 0 ? 7 : 6;
+                          int d3 = currentGameType == 0 ? 11 : 9;
+                          drawBtn(canvas, "简单(" + d1 + ")", space, row2Y,
+                                  space + btnW, row2Y + btnH,
+                                  depth == d1 ? COLOR_BLUE : COLOR_BTN_LIGHT,
+                                  Color.BLACK, w * 0.035f);
+                          drawBtn(canvas, "普通(" + d2 + ")", space * 2f + btnW, row2Y,
+                                  space * 2f + btnW * 2f, row2Y + btnH,
+                                  depth == d2 ? COLOR_BLUE : COLOR_BTN_LIGHT,
+                                  Color.BLACK, w * 0.035f);
+                          drawBtn(canvas, "困难(" + d3 + ")", space * 3f + btnW * 2f, row2Y,
+                                  space * 3f + btnW * 3f, row2Y + btnH,
+                                  depth == d3 ? COLOR_BLUE : COLOR_BTN_LIGHT,
+                                  Color.BLACK, w * 0.032f);
+
+                          row3Y = row2Y + btnH + w * 0.04f;
+                          drawBtn(canvas, "-", space, row3Y, space + btnW, row3Y + btnH,
+                                  COLOR_BTN_GRAY, Color.BLACK, w * 0.05f);
+                          paint.setColor(Color.BLACK);
+                          paint.setTextSize(w * 0.045f);
+                          paint.setTextAlign(Paint.Align.CENTER);
+                          Paint.FontMetrics fm = paint.getFontMetrics();
+                          float textY = row3Y + btnH / 2f - (fm.descent + fm.ascent) / 2f;
+                          canvas.drawText("自由深度: " + depth, w / 2f, textY, paint);
+                          drawBtn(canvas, "+", w - space - btnW, row3Y, w - space, row3Y + btnH,
+                                  COLOR_BTN_GRAY, Color.BLACK, w * 0.05f);
+                      }
+
+                      float switchBtnW = w * 0.5f;
+                      float switchBtnH = w * 0.11f;
+                      float switchBtnX = w / 2f - switchBtnW / 2f;
+                      float switchBtnY = row3Y + btnH + w * 0.06f;
+                      String switchText = currentGameType == 0 ? "⇌ 切换至 中国象棋" : "⇌ 切换至 五子棋";
+                      int switchBg = currentGameType == 0 ? COLOR_BROWN : COLOR_SLATE;
+                      drawBtn(canvas, switchText, switchBtnX, switchBtnY,
+                              switchBtnX + switchBtnW, switchBtnY + switchBtnH,
+                              switchBg, Color.WHITE, w * 0.045f);
+                  }
+
+                  private void drawBtn(Canvas canvas, String text, float left, float top,
+                                       float right, float bottom, int bg, int fg, float textSize) {
+                      paint.setStyle(Paint.Style.FILL);
+                      paint.setColor(bg);
+                      canvas.drawRoundRect(left, top, right, bottom, w * 0.02f, w * 0.02f, paint);
+                      paint.setColor(fg);
+                      paint.setTextSize(textSize);
+                      paint.setTextAlign(Paint.Align.CENTER);
+                      Paint.FontMetrics fm = paint.getFontMetrics();
+                      canvas.drawText(text, left + (right - left) / 2f,
+                              top + (bottom - top) / 2f - (fm.descent + fm.ascent) / 2f, paint);
+                  }
+
+                  private void showRulesDialog() {
+                      String rule = currentGameType == 0
+                              ? "【五子棋规则】\n只要某一方连成5子即为胜利！\n黑棋白棋均受禁手限制（防误触），点错有提示不判负。\n\n【AI改进】\n1. 强制胜着与强制防守优先\n2. 更精准的活三、冲四、跳四与组合威胁评估\n3. PVS、置换表、迭代加深与后期减枝\n4. 候选走法排序并保留关键攻防点"
+                              : "【中国象棋规则】\n经典中国象棋规则，当对方被将死(无路可解将)或困毙(无棋可走)即为胜利！\n将帅不能直接面对面（防对视）。\n\n【绝杀判定说明】\n- 仅当对方完全没有任何合法走法时才判绝杀\n- 被将军时将/帅会红色高亮提示\n- 状态栏显示[将军!]提示\n- 区分'绝杀'(被将军无解)与'困毙'(未被将军但无棋可走)\n\n【AI改进】\n1. 历史严格匹配的开局库\n2. PVS、置换表、空步裁剪、LMR和静止搜索\n3. MVV-LVA、killer与history走法排序\n4. 棋子位置、机动性、保护关系和悬子惩罚\n5. 将帅安全、将军延伸与重复局面处理\n\n提示：面对'炮'的隔子将军时，由于炮攻击的是整条线，将帅顺着这条线移动不一定能解将，请以绿色合法落点为准。";
+                      new AlertDialog.Builder(getContext())
+                              .setTitle("❓ 游戏规则与说明")
+                              .setMessage(rule)
+                              .setPositiveButton("我知道了", null)
+                              .show();
+                  }
+
+                  private float currentBoardBottom() {
+                      float boardWidth = w - 2f * margin;
+                      if (currentGameType == 0) {
+                          float top = margin + w * 0.25f;
+                          return top + boardWidth;
+                      }
+                      float xiangqiHeight = boardWidth / 8f * 9f;
+                      float top = margin + w * 0.25f - (xiangqiHeight - boardWidth) / 2f;
+                      return top + xiangqiHeight;
+                  }
+
+                  private void requestAiInterrupt() {
+                      if (currentGameType == 0 && g_aiThinking) {
+                          rollbackAfterCancel = !g_moveHistory.isEmpty()
+                                  && g_moveHistory.get(g_moveHistory.size() - 1)[2] == g_humanColor;
+                          g_statusMsg = "正在中断思考...";
+                          cancelSearchOnly();
+                      } else if (currentGameType == 1 && x_aiThinking) {
+                          // AI 是黑方思考时，当前仍为黑方，最后一步通常是玩家红方。
+                          rollbackAfterCancel = !x_moveHistory.isEmpty();
+                          x_statusMsg = "正在中断思考...";
+                          cancelSearchOnly();
+                      }
+                      invalidate();
+                  }
+
+                  @Override
+                  public boolean onTouchEvent(MotionEvent event) {
+                      if (event.getAction() != MotionEvent.ACTION_DOWN) return true;
+                      float ex = event.getX(), ey = event.getY();
+
+                      float modeBtnW = w * 0.40f;
+                      float modeBtnH = w * 0.12f;
+                      float modeBtnX = w / 2f - modeBtnW / 2f;
+                      float modeBtnY = margin;
+                      float ruleBtnW = w * 0.10f;
+                      float ruleBtnX = w - margin - ruleBtnW;
+
+                      if (checkClick(ex, ey, ruleBtnX, margin,
+                              ruleBtnX + ruleBtnW, margin + ruleBtnW)) {
+                          showRulesDialog();
+                          return true;
+                      }
+                      if (checkClick(ex, ey, modeBtnX, modeBtnY,
+                              modeBtnX + modeBtnW, modeBtnY + modeBtnH)) {
+                          if (g_aiThinking || x_aiThinking) return true;
+                          if (currentGameType == 0) {
+                              g_gameMode = 1 - g_gameMode;
+                              restartGomoku(true);
+                          } else {
+                              x_gameMode = 1 - x_gameMode;
+                              restartXiangqi(true);
+                          }
+                          return true;
+                      }
+
+                      float bottomY = currentBoardBottom() + w * 0.11f;
+                      float btnW = w * 0.20f;
+                      float btnH = w * 0.096f;
+                      float space = (w - 3f * btnW) / 4f;
+                      float row1Y = bottomY + w * 0.06f;
+
+                      if (checkClick(ex, ey, space, row1Y, space + btnW, row1Y + btnH)) {
+                          boolean thinking = currentGameType == 0 ? g_aiThinking : x_aiThinking;
+                          if (thinking) requestAiInterrupt();
+                          else if (currentGameType == 0) g_undoMove();
+                          else x_undoMove();
+                          return true;
+                      }
+                      if (checkClick(ex, ey, space * 2f + btnW, row1Y,
+                              space * 2f + btnW * 2f, row1Y + btnH)) {
+                          if (currentGameType == 0) {
+                              if (!g_aiThinking) restartGomoku(true);
+                          } else if (!x_aiThinking) {
+                              restartXiangqi(true);
+                          }
+                          return true;
+                      }
+                      if (checkClick(ex, ey, space * 3f + btnW * 2f, row1Y,
+                              space * 3f + btnW * 3f, row1Y + btnH)) {
+                          saveGameState();
+                          Context context = getContext();
+                          if (context instanceof Activity) ((Activity) context).finish();
+                          return true;
+                      }
+
+                      boolean thinking = currentGameType == 0 ? g_aiThinking : x_aiThinking;
+                      int mode = currentGameType == 0 ? g_gameMode : x_gameMode;
+                      float row3Y = row1Y;
+                      if (mode == 0 && !thinking) {
+                          float row2Y = row1Y + btnH + w * 0.04f;
+                          row3Y = row2Y + btnH + w * 0.04f;
+                          int d1 = currentGameType == 0 ? 4 : 3;
+                          int d2 = currentGameType == 0 ? 7 : 6;
+                          int d3 = currentGameType == 0 ? 11 : 9;
+                          if (checkClick(ex, ey, space, row2Y, space + btnW, row2Y + btnH)) {
+                              setDepth(d1); return true;
+                          }
+                          if (checkClick(ex, ey, space * 2f + btnW, row2Y,
+                                  space * 2f + btnW * 2f, row2Y + btnH)) {
+                              setDepth(d2); return true;
+                          }
+                          if (checkClick(ex, ey, space * 3f + btnW * 2f, row2Y,
+                                  space * 3f + btnW * 3f, row2Y + btnH)) {
+                              setDepth(d3); return true;
+                          }
+                          if (checkClick(ex, ey, space, row3Y, space + btnW, row3Y + btnH)) {
+                              int depth = getDepth();
+                              if (depth > 1) setDepth(depth - 1);
+                              return true;
+                          }
+                          if (checkClick(ex, ey, w - space - btnW, row3Y,
+                                  w - space, row3Y + btnH)) {
+                              int depth = getDepth();
+                              if (depth < getMaxDepth()) setDepth(depth + 1);
+                              return true;
+                          }
+                      }
+
+                      float switchBtnW = w * 0.5f;
+                      float switchBtnH = w * 0.11f;
+                      float switchBtnX = w / 2f - switchBtnW / 2f;
+                      float switchBtnY = (mode == 0 ? row3Y : row1Y) + btnH + w * 0.06f;
+                      if (checkClick(ex, ey, switchBtnX, switchBtnY,
+                              switchBtnX + switchBtnW, switchBtnY + switchBtnH)) {
+                          if (!g_aiThinking && !x_aiThinking) {
+                              currentGameType = 1 - currentGameType;
+                              updateStatusMsg();
+                              invalidate();
+                          }
+                          return true;
+                      }
+
+                      if (currentGameType == 0 && !g_gameOver && !g_aiThinking) {
+                          handleGomokuTouch(ex, ey);
+                      } else if (currentGameType == 1 && !x_gameOver && !x_aiThinking) {
+                          handleXiangqiTouch(ex, ey);
+                      }
+                      return true;
+                  }
+
+                  private boolean checkClick(float x, float y, float left, float top,
+                                             float right, float bottom) {
+                      return x >= left && x <= right && y >= top && y <= bottom;
+                  }
+
+                  private int getDepth() {
+                      return currentGameType == 0 ? g_aiDepth : x_aiDepth;
+                  }
+
+                  private int getMaxDepth() {
+                      return currentGameType == 0 ? G_MAX_USER_DEPTH : X_MAX_USER_DEPTH;
+                  }
+
+                  private void setDepth(int depth) {
+                      if (currentGameType == 0) g_aiDepth = clamp(depth, 1, G_MAX_USER_DEPTH);
+                      else x_aiDepth = clamp(depth, 1, X_MAX_USER_DEPTH);
+                      updateStatusMsg();
+                      invalidate();
+                  }
+
+                  private void handleGomokuTouch(float ex, float ey) {
+                      if (g_gameMode != 1 && g_currentPlayer != g_humanColor) return;
+                      int c = Math.round((ex - startX) / g_cellSize);
+                      int r = Math.round((ey - startY) / g_cellSize);
+                      if (!insideG(r, c) || g_board[r][c] != 0) return;
+                      if (g_isForbiddenMove(g_board, r, c, g_currentPlayer)) {
+                          g_statusMsg = "禁手违规！";
+                          invalidate();
+                          return;
+                      }
+                      int movedPlayer = g_currentPlayer;
+                      g_makeMove(r, c, movedPlayer);
+                      if (g_checkWin(g_board, r, c, movedPlayer)) {
+                          g_statusMsg = (movedPlayer == 1 ? "黑" : "白") + "棋胜利！";
+                          g_gameOver = true;
+                      } else {
+                          g_currentPlayer = 3 - g_currentPlayer;
+                          updateStatusMsg();
+                          if (g_gameMode == 0) triggerGomokuAiMove();
+                      }
+                      invalidate();
+                  }
+
+                  private void x_selectPiece(int r, int c) {
+                      x_selectedPos = new int[]{r, c};
+                      x_validMovesDisplay.clear();
+                      int count = x_genValidMoves(x_board, r, c, x_pieceMoveScratch);
+                      for (int i = 0; i < count; i++) {
+                          int move = x_pieceMoveScratch[i];
+                          if (x_isLegalMove(x_board, move, x_isRedTurn)) x_validMovesDisplay.add(move);
+                      }
+                  }
+
+                  private void handleXiangqiTouch(float ex, float ey) {
+                      if (x_gameMode != 1 && !x_isRedTurn) return;
+                      int c = Math.round((ex - startX) / x_cellSize);
+                      int r = Math.round((ey - startY) / x_cellSize);
+                      if (!insideX(r, c)) return;
+
+                      if (x_selectedPos != null) {
+                          int sr = x_selectedPos[0], sc = x_selectedPos[1];
+                          int selectedMove = encodeXMove(sr, sc, r, c);
+                          boolean legalTarget = x_validMovesDisplay.contains(selectedMove);
+                          if (legalTarget) {
+                              x_makeMove(sr, sc, r, c);
+                              if (x_checkGameOver(x_board, x_isRedTurn)) {
+                                  boolean inCheck = x_isInCheck(x_board, x_isRedTurn);
+                                  x_statusMsg = inCheck
+                                          ? "绝杀！" + (x_isRedTurn ? "黑" : "红") + "方胜利！"
+                                          : "困毙！" + (x_isRedTurn ? "黑" : "红") + "方胜利！(对方无棋可走)";
+                                  x_gameOver = true;
+                              } else {
+                                  updateStatusMsg();
+                                  if (x_gameMode == 0) triggerXiangqiAiMove();
+                              }
+                          } else if (x_board[r][c] != '.' && x_isRed(x_board[r][c]) == x_isRedTurn) {
+                              x_selectPiece(r, c);
+                          } else {
+                              x_selectedPos = null;
+                              x_validMovesDisplay.clear();
+                          }
+                      } else if (x_board[r][c] != '.' && x_isRed(x_board[r][c]) == x_isRedTurn) {
+                          x_selectPiece(r, c);
+                      }
+                      invalidate();
+                  }
+              }
+          }
+          JAVA
+
+          # 提前检查完整源码，避免文件复制不完整时生成难懂的编译错误。
+          test -s app/src/main/java/com/gomoku/app/MainActivity.java
+          grep -q '^package com\.gomoku\.app;' app/src/main/java/com/gomoku/app/MainActivity.java
+          grep -q 'public class MainActivity extends Activity' app/src/main/java/com/gomoku/app/MainActivity.java
+          grep -q 'G_MAX_USER_DEPTH = 15' app/src/main/java/com/gomoku/app/MainActivity.java
+          grep -q 'X_MAX_USER_DEPTH = 12' app/src/main/java/com/gomoku/app/MainActivity.java
+
+      - name: Build debug APK
+        run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Gomoku-AI-APK
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
