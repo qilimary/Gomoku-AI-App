@@ -61,7 +61,7 @@ jobs:
                   mavenCentral()
               }
           }
-          rootProject.name = "Gomoku-AI-App"
+          rootProject.name = "Board-Games-3-in-1"
           include ':app'
           GRADLE
 
@@ -92,8 +92,8 @@ jobs:
                   applicationId "com.gomoku.app"
                   minSdk 26
                   targetSdk 34
-                  versionCode 3
-                  versionName "1.2"
+                  versionCode 6
+                  versionName "1.5"
               }
 
               compileOptions {
@@ -108,7 +108,7 @@ jobs:
               <application
                   android:allowBackup="true"
                   android:icon="@drawable/ic_launcher"
-                  android:label="五子棋"
+                  android:label="棋牌三合一"
                   android:supportsRtl="true"
                   android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
                   <activity
@@ -124,25 +124,71 @@ jobs:
           </manifest>
           XML
 
+          # 新版图标：用一枚现代化徽章同时表现扑克牌、中国象棋与五子棋。
           cat > app/src/main/res/drawable/ic_launcher.xml <<'XML'
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="108dp"
               android:height="108dp"
               android:viewportWidth="108"
               android:viewportHeight="108">
-              <path android:fillColor="#E3C498" android:pathData="M10,10 h88 v88 h-88 z" />
-              <path android:strokeColor="#000000" android:strokeWidth="1.5"
-                  android:pathData="M20,20 h68 M20,33.6 h68 M20,47.2 h68 M20,60.8 h68 M20,74.4 h68 M20,88 h68 M20,20 v68 M33.6,20 v68 M47.2,20 v68 M60.8,20 v68 M74.4,20 v68 M88,20 v68" />
-              <path android:fillColor="#000000"
-                  android:pathData="M42.7,47.2 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" />
-              <path android:fillColor="#FFFFFF"
-                  android:pathData="M56.3,60.8 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" />
+              <path
+                  android:fillColor="#0B5B4C"
+                  android:pathData="M12,4h84c4.42,0 8,3.58 8,8v84c0,4.42 -3.58,8 -8,8h-84c-4.42,0 -8,-3.58 -8,-8v-84c0,-4.42 3.58,-8 8,-8z" />
+              <path
+                  android:fillColor="#147463"
+                  android:pathData="M12,4h84c4.42,0 8,3.58 8,8v34c-27,14 -59,17 -100,8v-42c0,-4.42 3.58,-8 8,-8z" />
+
+              <!-- 扑克牌 -->
+              <group android:rotation="-8" android:pivotX="31" android:pivotY="37">
+                  <path
+                      android:fillColor="#FFF9E8"
+                      android:strokeColor="#E9D8A6"
+                      android:strokeWidth="1.5"
+                      android:pathData="M17,13h28c3.31,0 6,2.69 6,6v40c0,3.31 -2.69,6 -6,6h-28c-3.31,0 -6,-2.69 -6,-6v-40c0,-3.31 2.69,-6 6,-6z" />
+                  <path
+                      android:fillColor="#D7463E"
+                      android:pathData="M25,24l6,-7 6,7 -6,7zM31,37l9,10 -9,10 -9,-10z" />
+              </group>
+
+              <!-- 中国象棋棋子 -->
+              <path
+                  android:fillColor="#F3C765"
+                  android:strokeColor="#FFF0B3"
+                  android:strokeWidth="1.8"
+                  android:pathData="M78,12a19,19 0,1 0,0 38a19,19 0,1 0,0 -38" />
+              <path
+                  android:fillColor="#00000000"
+                  android:strokeColor="#9B302B"
+                  android:strokeWidth="3"
+                  android:strokeLineCap="round"
+                  android:pathData="M68,24h20M68,38h20M72,19v24M84,19v24M72,31h12" />
+
+              <!-- 五子棋棋盘与棋子 -->
+              <path
+                  android:fillColor="#D9B775"
+                  android:pathData="M20,63h68c3.31,0 6,2.69 6,6v22c0,3.31 -2.69,6 -6,6h-68c-3.31,0 -6,-2.69 -6,-6v-22c0,-3.31 2.69,-6 6,-6z" />
+              <path
+                  android:fillColor="#00000000"
+                  android:strokeColor="#765B32"
+                  android:strokeWidth="1.3"
+                  android:pathData="M25,68v24M39,68v24M53,68v24M67,68v24M81,68v24M19,72h70M19,80h70M19,88h70" />
+              <path
+                  android:fillColor="#171A1B"
+                  android:pathData="M34,80a7,7 0,1 0,14 0a7,7 0,1 0,-14 0" />
+              <path
+                  android:fillColor="#FFFDF5"
+                  android:strokeColor="#C8C4B8"
+                  android:strokeWidth="1"
+                  android:pathData="M60,72a7,7 0,1 0,14 0a7,7 0,1 0,-14 0" />
+              <path
+                  android:fillColor="#F5D97A"
+                  android:pathData="M91,89a5,5 0,1 0,10 0a5,5 0,1 0,-10 0" />
           </vector>
           XML
 
           cat > app/src/main/java/com/gomoku/app/MainActivity.java <<'JAVA'
           package com.gomoku.app;
-
+          
           import android.app.Activity;
           import android.app.AlertDialog;
           import android.content.Context;
@@ -153,36 +199,36 @@ jobs:
           import android.os.Bundle;
           import android.view.MotionEvent;
           import android.view.View;
-
+          
           import java.util.ArrayList;
           import java.util.Arrays;
           import java.util.Random;
           import java.util.concurrent.ExecutorService;
           import java.util.concurrent.Executors;
           import java.util.concurrent.atomic.AtomicInteger;
-
+          
           public class MainActivity extends Activity {
               private GameView gameView;
-
+          
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
                   gameView = new GameView(this);
                   setContentView(gameView);
               }
-
+          
               @Override
               protected void onPause() {
                   super.onPause();
                   if (gameView != null) gameView.saveGameState();
               }
-
+          
               @Override
               protected void onDestroy() {
                   if (gameView != null) gameView.shutdown();
                   super.onDestroy();
               }
-
+          
               final class GameView extends View {
                   // ================= 通用状态 =================
                   private static final int TT_SIZE = 1 << 18;
@@ -194,11 +240,11 @@ jobs:
                   private static final int MAX_X_MOVES = 256;
                   private static final int G_WIN_SCORE = 1_000_000;
                   private static final int X_MATE_SCORE = 1_000_000;
-
+          
                   // 手机端自由深度上限：防止误调到几十层后长时间等待。
                   private static final int G_MAX_USER_DEPTH = 15;
                   private static final int X_MAX_USER_DEPTH = 12;
-
+          
                   private int currentGameType = 0; // 0 五子棋，1 中国象棋
                   private float w, margin, startX, startY;
                   private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -209,13 +255,13 @@ jobs:
                   private volatile boolean keepThinking = false;
                   private volatile boolean rollbackAfterCancel = false;
                   private volatile long searchDeadlineNanos = Long.MAX_VALUE;
-
+          
                   private final int[][] G_DIRS = {{1,0}, {0,1}, {1,1}, {1,-1}};
                   private final int[][] X_DIRS_CROSS = {{-1,0},{1,0},{0,-1},{0,1}};
                   private final int[][] X_DIRS_KNIGHT = {{-2,-1},{-2,1},{2,-1},{2,1},{-1,-2},{1,-2},{-1,2},{1,2}};
                   private final int[][] X_DIRS_BISHOP = {{-2,-2},{-2,2},{2,-2},{2,2}};
                   private final int[][] X_DIRS_ADVISOR = {{-1,-1},{-1,1},{1,-1},{1,1}};
-
+          
                   // 颜色只解析一次，避免 onDraw 反复 parseColor。
                   private static final int COLOR_X_BOARD = 0xFFF5DEB3;
                   private static final int COLOR_BTN_GRAY = 0xFFE0E0E0;
@@ -230,7 +276,7 @@ jobs:
                   private static final int COLOR_PAPAYA = 0xFFFFEFD5;
                   private static final int COLOR_CYAN = 0xFF00C8FF;
                   private static final int COLOR_DARK_RED = 0xFFD32F2F;
-
+          
                   // ================= 五子棋状态 =================
                   private static final int G_BOARD_SIZE = 15;
                   private float g_cellSize, g_boardSize;
@@ -246,7 +292,7 @@ jobs:
                   private boolean g_gameOver = false;
                   private String g_statusMsg = "";
                   private volatile int g_thinkingSec = 0;
-
+          
                   private final long[][][] g_zobristTable = new long[G_BOARD_SIZE][G_BOARD_SIZE][3];
                   private final long[] g_zobristSide = new long[3];
                   private long g_zobristHash = 0L;
@@ -262,7 +308,7 @@ jobs:
                   private final int[][] g_scoreBuffer = new int[MAX_PLY][G_BOARD_SIZE * G_BOARD_SIZE];
                   private int g_rootBestMove = -1;
                   private int g_lastCompletedBestMove = -1;
-
+          
                   // ================= 中国象棋状态 =================
                   private float x_cellSize, x_boardWidth, x_boardHeight;
                   private final char[][] x_board = new char[10][9];
@@ -279,7 +325,7 @@ jobs:
                   private boolean x_gameOver = false;
                   private String x_statusMsg = "红方走";
                   private volatile int x_thinkingSec = 0;
-
+          
                   private final long[][][] x_zobristTable = new long[10][9][14];
                   private final long[] x_zobristTurn = new long[2];
                   private long x_zobristHash = 0L;
@@ -299,12 +345,12 @@ jobs:
                   private final long[] x_pathHashes = new long[MAX_PLY];
                   private int x_rootBestMove = -1;
                   private int x_lastCompletedBestMove = -1;
-
+          
                   private final int[][] x_pieceSquare = new int[14][90];
                   private final int[] x_openingLineChoice = new int[1];
                   private int[][] x_openingLines;
                   private final int[] x_pieceMoveScratch = new int[64];
-
+          
                   final class XMoveRecord {
                       final int sr, sc, er, ec;
                       final char captured;
@@ -312,7 +358,7 @@ jobs:
                           this.sr = sr; this.sc = sc; this.er = er; this.ec = ec; this.captured = captured;
                       }
                   }
-
+          
                   private final Runnable timerRunnable = new Runnable() {
                       @Override
                       public void run() {
@@ -324,7 +370,7 @@ jobs:
                           postDelayed(this, 1000L);
                       }
                   };
-
+          
                   GameView(Context context) {
                       super(context);
                       setFocusable(true);
@@ -333,25 +379,25 @@ jobs:
                       loadGameState();
                       post(this::resumePendingAiIfNeeded);
                   }
-
+          
                   void shutdown() {
                       cancelSearchOnly();
                       removeCallbacks(timerRunnable);
                       aiExecutor.shutdownNow();
                   }
-
+          
                   private boolean searchActive() {
                       return keepThinking
                               && activeSearchToken == searchToken.get()
                               && !Thread.currentThread().isInterrupted()
                               && System.nanoTime() < searchDeadlineNanos;
                   }
-
+          
                   private void cancelSearchOnly() {
                       keepThinking = false;
                       searchToken.incrementAndGet();
                   }
-
+          
                   private int beginSearch(long budgetMillis) {
                       int token = searchToken.incrementAndGet();
                       activeSearchToken = token;
@@ -361,11 +407,11 @@ jobs:
                               : System.nanoTime() + budgetMillis * 1_000_000L;
                       return token;
                   }
-
+          
                   private boolean tokenStillCurrent(int token) {
                       return token == searchToken.get();
                   }
-
+          
                   public void saveGameState() {
                       SharedPreferences.Editor ed = getContext()
                               .getSharedPreferences("BoardGamesSave", Context.MODE_PRIVATE).edit();
@@ -375,13 +421,13 @@ jobs:
                       ed.putInt("g_gameMode", g_gameMode);
                       ed.putInt("x_gameMode", x_gameMode);
                       ed.putInt("g_humanColor", g_humanColor);
-
+          
                       StringBuilder gHist = new StringBuilder(g_moveHistory.size() * 8);
                       for (int[] m : g_moveHistory) {
                           gHist.append(m[0]).append(',').append(m[1]).append(',').append(m[2]).append(';');
                       }
                       ed.putString("g_history", gHist.toString());
-
+          
                       StringBuilder xHist = new StringBuilder(x_moveHistory.size() * 12);
                       for (XMoveRecord m : x_moveHistory) {
                           xHist.append(m.sr).append(',').append(m.sc).append(',')
@@ -390,7 +436,7 @@ jobs:
                       ed.putString("x_history", xHist.toString());
                       ed.apply();
                   }
-
+          
                   private void loadGameState() {
                       SharedPreferences prefs = getContext().getSharedPreferences("BoardGamesSave", Context.MODE_PRIVATE);
                       currentGameType = clamp(prefs.getInt("gameType", 0), 0, 1);
@@ -399,10 +445,10 @@ jobs:
                       g_gameMode = clamp(prefs.getInt("g_gameMode", 0), 0, 1);
                       x_gameMode = clamp(prefs.getInt("x_gameMode", 0), 0, 1);
                       g_humanColor = clamp(prefs.getInt("g_humanColor", 1), 1, 2);
-
+          
                       restartGomoku(false);
                       restartXiangqi(false);
-
+          
                       boolean saveValid = true;
                       try {
                           String gHist = prefs.getString("g_history", "");
@@ -425,7 +471,7 @@ jobs:
                                   }
                               }
                           }
-
+          
                           String xHist = prefs.getString("x_history", "");
                           if (xHist != null && !xHist.isEmpty()) {
                               for (String ms : xHist.split(";")) {
@@ -457,7 +503,7 @@ jobs:
                       } catch (RuntimeException e) {
                           saveValid = false;
                       }
-
+          
                       if (!saveValid) {
                           restartGomoku(false);
                           restartXiangqi(false);
@@ -468,7 +514,7 @@ jobs:
                       updateStatusMsg();
                       invalidate();
                   }
-
+          
                   private void resumePendingAiIfNeeded() {
                       if (currentGameType == 0 && g_gameMode == 0 && !g_gameOver
                               && g_currentPlayer != g_humanColor && !g_aiThinking) {
@@ -478,7 +524,7 @@ jobs:
                           triggerXiangqiAiMove();
                       }
                   }
-
+          
                   private void updateStatusMsg() {
                       if (currentGameType == 0) {
                           if (g_gameOver) return;
@@ -503,33 +549,33 @@ jobs:
                           }
                       }
                   }
-
+          
                   private static int clamp(int value, int min, int max) {
                       return Math.max(min, Math.min(max, value));
                   }
-
+          
                   private int scoreToTt(int score, int ply, int mateScore) {
                       if (score > mateScore - MAX_PLY) return score + ply;
                       if (score < -mateScore + MAX_PLY) return score - ply;
                       return score;
                   }
-
+          
                   private int scoreFromTt(int score, int ply, int mateScore) {
                       if (score > mateScore - MAX_PLY) return score - ply;
                       if (score < -mateScore + MAX_PLY) return score + ply;
                       return score;
                   }
-
+          
                   private boolean insideG(int r, int c) {
                       return r >= 0 && r < G_BOARD_SIZE && c >= 0 && c < G_BOARD_SIZE;
                   }
-
+          
                   private boolean insideX(int r, int c) {
                       return r >= 0 && r < 10 && c >= 0 && c < 9;
                   }
-
+          
                   // ================= 五子棋核心逻辑 =================
-
+          
                   private void initGomokuEngine() {
                       for (int r = 0; r < G_BOARD_SIZE; r++) {
                           for (int c = 0; c < G_BOARD_SIZE; c++) {
@@ -542,7 +588,7 @@ jobs:
                       g_zobristSide[1] = rand.nextLong();
                       g_zobristSide[2] = rand.nextLong();
                   }
-
+          
                   private void restartGomoku(boolean triggerAI) {
                       rollbackAfterCancel = false;
                       cancelSearchOnly();
@@ -563,13 +609,13 @@ jobs:
                       invalidate();
                       if (triggerAI && g_gameMode == 0 && g_humanColor == 2) triggerGomokuAiMove();
                   }
-
+          
                   private void syncGomokuBoard() {
                       for (int r = 0; r < G_BOARD_SIZE; r++) {
                           System.arraycopy(g_board[r], 0, g_displayBoard[r], 0, G_BOARD_SIZE);
                       }
                   }
-
+          
                   private boolean g_hasNeighbor(int r, int c, int dist) {
                       int r0 = Math.max(0, r - dist), r1 = Math.min(G_BOARD_SIZE - 1, r + dist);
                       int c0 = Math.max(0, c - dist), c1 = Math.min(G_BOARD_SIZE - 1, c + dist);
@@ -580,7 +626,7 @@ jobs:
                       }
                       return false;
                   }
-
+          
                   private int g_virtualCell(int r, int c, int centerR, int centerC, int player) {
                       if (!insideG(r, c)) return 2;
                       if (r == centerR && c == centerC) return 1;
@@ -588,7 +634,7 @@ jobs:
                       if (v == 0) return 0;
                       return v == player ? 1 : 2;
                   }
-
+          
                   private int g_directionScore(int r, int c, int player, int dr, int dc) {
                       int left = 0, right = 0;
                       for (int i = 1; i <= 4; i++) {
@@ -603,14 +649,14 @@ jobs:
                       int open = 0;
                       if (g_virtualCell(r - dr * (left + 1), c - dc * (left + 1), r, c, player) == 0) open++;
                       if (g_virtualCell(r + dr * (right + 1), c + dc * (right + 1), r, c, player) == 0) open++;
-
+          
                       if (count >= 5) return G_WIN_SCORE;
                       int best;
                       if (count == 4) best = open == 2 ? 220_000 : open == 1 ? 70_000 : 0;
                       else if (count == 3) best = open == 2 ? 18_000 : open == 1 ? 3_000 : 0;
                       else if (count == 2) best = open == 2 ? 1_200 : open == 1 ? 250 : 0;
                       else best = open == 2 ? 80 : 15;
-
+          
                       // 额外识别跳四、跳三等非连续棋型；直接扫描窗口，不在搜索热路径创建数组。
                       for (int start = -4; start <= 0; start++) {
                           int own = 0, empty = 0, blocked = 0;
@@ -628,7 +674,7 @@ jobs:
                       }
                       return best;
                   }
-
+          
                   private int g_localScore(int[][] ignoredBoard, int r, int c, int player) {
                       if (!insideG(r, c)) return Integer.MIN_VALUE / 4;
                       if (g_board[r][c] != 0 && g_board[r][c] != player) return Integer.MIN_VALUE / 4;
@@ -645,7 +691,7 @@ jobs:
                       else if (threes >= 2) sum += 45_000;
                       return sum + g_posWeights[r][c];
                   }
-
+          
                   private boolean g_isForbiddenMove(int[][] ignoredBoard, int r, int c, int player) {
                       if (!insideG(r, c) || g_board[r][c] != 0) return true;
                       g_board[r][c] = player;
@@ -663,7 +709,7 @@ jobs:
                       g_board[r][c] = 0;
                       return fours >= 2 || threes >= 2;
                   }
-
+          
                   private boolean g_checkWin(int[][] board, int r, int c, int player) {
                       for (int[] d : G_DIRS) {
                           int count = 1;
@@ -681,7 +727,7 @@ jobs:
                       }
                       return false;
                   }
-
+          
                   private int g_findForcedTacticalMove(int player) {
                       int opponent = 3 - player;
                       int firstBlock = -1;
@@ -692,7 +738,7 @@ jobs:
                               boolean wins = g_checkWin(g_board, r, c, player);
                               g_board[r][c] = 0;
                               if (wins) return (r << 8) | c;
-
+          
                               g_board[r][c] = opponent;
                               boolean blocks = g_checkWin(g_board, r, c, opponent);
                               g_board[r][c] = 0;
@@ -701,7 +747,7 @@ jobs:
                       }
                       return firstBlock;
                   }
-
+          
                   private int g_generateMoves(int ply, int player, int ttMove) {
                       int[] moves = g_moveBuffer[ply];
                       int[] scores = g_scoreBuffer[ply];
@@ -722,13 +768,13 @@ jobs:
                           scores[0] = 1_000_000;
                           return 1;
                       }
-
+          
                       minR = Math.max(0, minR - 2); maxR = Math.min(G_BOARD_SIZE - 1, maxR + 2);
                       minC = Math.max(0, minC - 2); maxC = Math.min(G_BOARD_SIZE - 1, maxC + 2);
                       int opponent = 3 - player;
                       boolean hasWin = false;
                       boolean hasForcedBlock = false;
-
+          
                       for (int r = minR; r <= maxR; r++) {
                           for (int c = minC; c <= maxC; c++) {
                               if (g_board[r][c] != 0 || !g_hasNeighbor(r, c, 2)) continue;
@@ -748,7 +794,7 @@ jobs:
                               hasForcedBlock |= block;
                           }
                       }
-
+          
                       if (size == 0) return 0;
                       if (hasWin || hasForcedBlock) {
                           int write = 0;
@@ -765,7 +811,7 @@ jobs:
                           }
                           size = write;
                       }
-
+          
                       // 插入排序；候选通常少于 60 个，避免对象和装箱分配。
                       for (int i = 1; i < size; i++) {
                           int m = moves[i], s = scores[i], j = i - 1;
@@ -777,7 +823,7 @@ jobs:
                           moves[j + 1] = m;
                           scores[j + 1] = s;
                       }
-
+          
                       int limit;
                       if (ply == 0) limit = 20;
                       else if (ply <= 2) limit = 16;
@@ -785,7 +831,7 @@ jobs:
                       else limit = 10;
                       return Math.min(size, limit);
                   }
-
+          
                   private int g_evaluateBoard() {
                       int ai = 3 - g_humanColor;
                       int human = g_humanColor;
@@ -808,26 +854,26 @@ jobs:
                       }
                       return any ? score : 0;
                   }
-
+          
                   private long packGomokuResult(int r, int c, int score) {
                       return ((long) score << 32) | ((long) (r & 0xFFFF) << 16) | (c & 0xFFFFL);
                   }
-
+          
                   private int unpackScoreG(long packed) {
                       return (int) (packed >> 32);
                   }
-
+          
                   private int unpackMoveG(long packed) {
                       int r = (int) ((packed >>> 16) & 0xFFFF);
                       int c = (int) (packed & 0xFFFF);
                       if (r == 0xFFFF || c == 0xFFFF) return -1;
                       return (r << 8) | c;
                   }
-
+          
                   private long g_alphaBeta(int depth, int alpha, int beta, int player) {
                       return g_alphaBeta(depth, alpha, beta, player, 0);
                   }
-
+          
                   private long g_alphaBeta(int depth, int alpha, int beta, int player, int ply) {
                       if (!searchActive() || depth <= 0 || ply >= MAX_PLY - 1) {
                           return packGomokuResult(-1, -1, g_evaluateBoard());
@@ -848,13 +894,13 @@ jobs:
                               if (alpha >= beta) return packGomokuResult(ttMove >> 8, ttMove & 0xFF, ttScore);
                           }
                       }
-
+          
                       int count = g_generateMoves(ply, player, ttMove);
                       if (count == 0) return packGomokuResult(-1, -1, 0);
                       boolean maximizing = player == aiColor;
                       int bestScore = maximizing ? Integer.MIN_VALUE + 1 : Integer.MAX_VALUE - 1;
                       int bestMove = -1;
-
+          
                       for (int i = 0; i < count; i++) {
                           if (!searchActive()) break;
                           int move = g_moveBuffer[ply][i];
@@ -869,7 +915,7 @@ jobs:
                                   int nextDepth = depth - 1;
                                   boolean quietLateMove = i >= 6 && depth >= 4 && g_scoreBuffer[ply][i] < 8_000;
                                   if (quietLateMove) nextDepth = Math.max(0, nextDepth - 1);
-
+          
                                   if (i == 0) {
                                       value = unpackScoreG(g_alphaBeta(nextDepth, alpha, beta, 3 - player, ply + 1));
                                   } else if (maximizing) {
@@ -894,7 +940,7 @@ jobs:
                               g_zobristHash ^= g_zobristTable[r][c][player];
                               g_board[r][c] = 0;
                           }
-
+          
                           if (maximizing) {
                               if (value > bestScore) { bestScore = value; bestMove = move; }
                               alpha = Math.max(alpha, bestScore);
@@ -904,10 +950,10 @@ jobs:
                           }
                           if (alpha >= beta) break;
                       }
-
+          
                       if (bestMove == -1) return packGomokuResult(-1, -1, g_evaluateBoard());
                       if (ply == 0) g_rootBestMove = bestMove;
-
+          
                       if (searchActive()) {
                           byte flag = bestScore <= originalAlpha ? TT_UPPER
                                   : bestScore >= originalBeta ? TT_LOWER : TT_EXACT;
@@ -925,7 +971,7 @@ jobs:
                       }
                       return packGomokuResult(bestMove >> 8, bestMove & 0xFF, bestScore);
                   }
-
+          
                   private int g_iterativeDeepening(int maxDepth) {
                       g_lastCompletedBestMove = -1;
                       int previousScore = 0;
@@ -955,14 +1001,14 @@ jobs:
                       }
                       return g_lastCompletedBestMove;
                   }
-
+          
                   private long g_timeBudgetMillis(int depth) {
                       if (depth <= 4) return 3_500L;
                       if (depth <= 7) return 14_800L;
                       if (depth <= 11) return 20_000L;
                       return Math.min(35_000L, 12_000L + (depth - 11L) * 3_000L);
                   }
-
+          
                   private void triggerGomokuAiMove() {
                       if (g_aiThinking || g_gameOver) return;
                       g_aiThinking = true;
@@ -974,7 +1020,7 @@ jobs:
                       invalidate();
                       removeCallbacks(timerRunnable);
                       postDelayed(timerRunnable, 1000L);
-
+          
                       aiExecutor.execute(() -> {
                           int bestMove = -1;
                           Throwable error = null;
@@ -1029,7 +1075,7 @@ jobs:
                           });
                       });
                   }
-
+          
                   private void g_makeMove(int r, int c, int player) {
                       g_board[r][c] = player;
                       g_moveHistory.add(new int[]{r, c, player});
@@ -1037,7 +1083,7 @@ jobs:
                       g_lastMoveHighlight = new int[]{r, c};
                       syncGomokuBoard();
                   }
-
+          
                   private boolean g_undoSingleMove() {
                       if (g_moveHistory.isEmpty()) return false;
                       int[] m = g_moveHistory.remove(g_moveHistory.size() - 1);
@@ -1053,7 +1099,7 @@ jobs:
                       syncGomokuBoard();
                       return true;
                   }
-
+          
                   private void g_undoMove() {
                       int wanted = g_gameMode == 0 ? 2 : 1;
                       int pops = Math.min(wanted, g_moveHistory.size());
@@ -1062,18 +1108,18 @@ jobs:
                       updateStatusMsg();
                       invalidate();
                   }
-
+          
                   // ================= 中国象棋核心逻辑 =================
-
+          
                   private int encodeXMove(int sr, int sc, int er, int ec) {
                       return (sr << 12) | (sc << 8) | (er << 4) | ec;
                   }
-
+          
                   private int x_sr(int move) { return (move >>> 12) & 0xF; }
                   private int x_sc(int move) { return (move >>> 8) & 0xF; }
                   private int x_er(int move) { return (move >>> 4) & 0xF; }
                   private int x_ec(int move) { return move & 0xF; }
-
+          
                   private void initXiangqiEngine() {
                       for (int r = 0; r < 10; r++) {
                           for (int c = 0; c < 9; c++) {
@@ -1086,7 +1132,7 @@ jobs:
                       initXiangqiOpeningBook();
                       for (int[] killers : x_killerMoves) Arrays.fill(killers, -1);
                   }
-
+          
                   private void initXiangqiPieceSquareTables() {
                       String pieces = "rnbakcpRNBAKCP";
                       for (int idx = 0; idx < pieces.length(); idx++) {
@@ -1132,7 +1178,7 @@ jobs:
                           }
                       }
                   }
-
+          
                   private void initXiangqiOpeningBook() {
                       // 每一行都是严格按历史匹配的完整走法序列，不再把互不相关的开局步随机混在一起。
                       x_openingLines = new int[][]{
@@ -1168,7 +1214,7 @@ jobs:
                               }
                       };
                   }
-
+          
                   private void restartXiangqi(boolean triggerAI) {
                       rollbackAfterCancel = false;
                       cancelSearchOnly();
@@ -1177,7 +1223,7 @@ jobs:
                               ".........", "P.P.P.P.P", ".C.....C.", ".........", "RNBAKABNR"
                       };
                       for (int r = 0; r < 10; r++) x_board[r] = init[r].toCharArray();
-
+          
                       x_zobristHash = 0L;
                       for (int r = 0; r < 10; r++) {
                           for (int c = 0; c < 9; c++) {
@@ -1205,16 +1251,16 @@ jobs:
                       invalidate();
                       if (triggerAI && x_gameMode == 0 && !x_isRedTurn) triggerXiangqiAiMove();
                   }
-
+          
                   private void syncXiangqiBoard() {
                       for (int r = 0; r < 10; r++) System.arraycopy(x_board[r], 0, x_displayBoard[r], 0, 9);
                   }
-
+          
                   private int getPieceIndex(char p) {
                       int idx = "rnbakcpRNBAKCP".indexOf(p);
                       return idx >= 0 ? idx : 0;
                   }
-
+          
                   private int x_pieceValue(char p) {
                       switch (Character.toLowerCase(p)) {
                           case 'k': return 20_000;
@@ -1227,15 +1273,15 @@ jobs:
                           default: return 0;
                       }
                   }
-
+          
                   private boolean x_isRed(char p) {
                       return p >= 'A' && p <= 'Z';
                   }
-
+          
                   private boolean x_insidePalace(int r, int c, boolean red) {
                       return c >= 3 && c <= 5 && (red ? r >= 7 && r <= 9 : r >= 0 && r <= 2);
                   }
-
+          
                   /** 生成单个棋子的伪合法走法；是否会送将由 x_isLegalMove 统一判断。 */
                   private int x_genValidMoves(char[][] board, int r, int c, int[] movesList) {
                       char piece = board[r][c];
@@ -1243,7 +1289,7 @@ jobs:
                       boolean red = x_isRed(piece);
                       char type = Character.toLowerCase(piece);
                       int size = 0;
-
+          
                       if (type == 'r') {
                           for (int[] d : X_DIRS_CROSS) {
                               int nr = r + d[0], nc = c + d[1];
@@ -1340,13 +1386,13 @@ jobs:
                       }
                       return size;
                   }
-
+          
                   private boolean x_isPseudoMovePresent(int r, int c, int move) {
                       int count = x_genValidMoves(x_board, r, c, x_pieceMoveScratch);
                       for (int i = 0; i < count; i++) if (x_pieceMoveScratch[i] == move) return true;
                       return false;
                   }
-
+          
                   private boolean x_isKingsFacing(char[][] board) {
                       int redR = -1, redC = -1, blackR = -1, blackC = -1;
                       for (int r = 0; r < 10; r++) {
@@ -1361,7 +1407,7 @@ jobs:
                       for (int r = from; r < to; r++) if (board[r][redC] != '.') return false;
                       return true;
                   }
-
+          
                   private boolean x_isInCheck(char[][] board, boolean redKing) {
                       int kr = -1, kc = -1;
                       char king = redKing ? 'K' : 'k';
@@ -1372,7 +1418,7 @@ jobs:
                       }
                       if (kr < 0) return true;
                       boolean enemyRed = !redKing;
-
+          
                       // 兵/卒攻击。
                       int pawnSourceR = kr + (enemyRed ? 1 : -1);
                       if (insideX(pawnSourceR, kc)) {
@@ -1391,7 +1437,7 @@ jobs:
                           if (p != '.' && x_isRed(p) == enemyRed && Character.toLowerCase(p) == 'p'
                                   && (enemyRed ? kr < 5 : kr > 4)) return true;
                       }
-
+          
                       // 马攻击，并检查蹩马腿。
                       for (int[] d : X_DIRS_KNIGHT) {
                           int hr = kr + d[0], hc = kc + d[1];
@@ -1403,7 +1449,7 @@ jobs:
                           int legC = hc + (Math.abs(dc) == 2 ? dc / 2 : 0);
                           if (board[legR][legC] == '.') return true;
                       }
-
+          
                       // 将/帅相邻攻击。
                       for (int[] d : X_DIRS_CROSS) {
                           int r = kr + d[0], c = kc + d[1];
@@ -1411,7 +1457,7 @@ jobs:
                           char p = board[r][c];
                           if (p != '.' && x_isRed(p) == enemyRed && Character.toLowerCase(p) == 'k') return true;
                       }
-
+          
                       // 车、炮和飞将的直线攻击。
                       for (int[] d : X_DIRS_CROSS) {
                           int r = kr + d[0], c = kc + d[1];
@@ -1436,7 +1482,7 @@ jobs:
                       }
                       return false;
                   }
-
+          
                   private boolean x_isLegalMove(char[][] board, int move, boolean redTurn) {
                       int sr = x_sr(move), sc = x_sc(move), er = x_er(move), ec = x_ec(move);
                       if (!insideX(sr, sc) || !insideX(er, ec)) return false;
@@ -1450,7 +1496,7 @@ jobs:
                       board[er][ec] = captured;
                       return legal;
                   }
-
+          
                   private boolean x_checkGameOver(char[][] board, boolean redTurn) {
                       for (int r = 0; r < 10; r++) {
                           for (int c = 0; c < 9; c++) {
@@ -1463,17 +1509,17 @@ jobs:
                       }
                       return true;
                   }
-
+          
                   private void x_markAttack(int[] map, int r, int c) {
                       if (insideX(r, c)) map[r * 9 + c]++;
                   }
-
+          
                   private void x_addPieceAttacks(char[][] board, int r, int c, int[] map) {
                       char piece = board[r][c];
                       if (piece == '.') return;
                       boolean red = x_isRed(piece);
                       char type = Character.toLowerCase(piece);
-
+          
                       if (type == 'r') {
                           for (int[] d : X_DIRS_CROSS) {
                               int nr = r + d[0], nc = c + d[1];
@@ -1537,7 +1583,7 @@ jobs:
                           }
                       }
                   }
-
+          
                   private void x_buildAttackMap(char[][] board, boolean red, int[] map) {
                       Arrays.fill(map, 0);
                       for (int r = 0; r < 10; r++) {
@@ -1547,7 +1593,7 @@ jobs:
                           }
                       }
                   }
-
+          
                   private int x_kingSafety(char[][] board, boolean red) {
                       char king = red ? 'K' : 'k';
                       int kr = -1, kc = -1, guards = 0;
@@ -1577,11 +1623,11 @@ jobs:
                       if (kc == 4) score += 8;
                       return score - openFilePenalty;
                   }
-
+          
                   private int x_evalBoard(char[][] board) {
                       return x_evalBoard(board, 0);
                   }
-
+          
                   /** 返回红方视角分数。 */
                   private int x_evalBoard(char[][] board, int ply) {
                       int safePly = Math.min(ply, MAX_PLY - 1);
@@ -1589,7 +1635,7 @@ jobs:
                       int[] blackAttack = x_blackAttacks[safePly];
                       x_buildAttackMap(board, true, redAttack);
                       x_buildAttackMap(board, false, blackAttack);
-
+          
                       int score = 0;
                       boolean redKing = false, blackKing = false;
                       for (int r = 0; r < 10; r++) {
@@ -1602,13 +1648,13 @@ jobs:
                               else if (p == 'k') blackKing = true;
                               int idx = getPieceIndex(p);
                               int value = x_pieceValue(p) + x_pieceSquare[idx][r * 9 + c];
-
+          
                               if (type != 'k') {
                                   int mobility = x_genValidMoves(board, r, c, x_pieceMoveScratch);
                                   int mobilityWeight = (type == 'r' || type == 'c') ? 3 : type == 'n' ? 4 : 1;
                                   value += mobility * mobilityWeight;
                               }
-
+          
                               int enemyAttacks = red ? blackAttack[r * 9 + c] : redAttack[r * 9 + c];
                               int defenders = red ? redAttack[r * 9 + c] : blackAttack[r * 9 + c];
                               if (type != 'k' && enemyAttacks > 0) {
@@ -1617,7 +1663,7 @@ jobs:
                               } else if (type != 'k' && defenders > 0) {
                                   value += Math.min(18, defenders * 5);
                               }
-
+          
                               if (red) score += value; else score -= value;
                           }
                       }
@@ -1629,7 +1675,7 @@ jobs:
                       if (x_isInCheck(board, false)) score += 85;
                       return score;
                   }
-
+          
                   /**
                    * 按已经走过的完整历史匹配开局库。只有某条开局线的前缀与实战完全一致，
                    * 才会返回它的下一步，避免旧版把互不相关的开局步随机拼接。
@@ -1664,12 +1710,12 @@ jobs:
                       int index = (int) ((x_zobristHash ^ (x_zobristHash >>> 32)) & 0x7FFFFFFF) % count;
                       return candidates[index];
                   }
-
+          
                   private int x_pieceSquareDelta(char piece, int sr, int sc, int er, int ec) {
                       int idx = getPieceIndex(piece);
                       return x_pieceSquare[idx][er * 9 + ec] - x_pieceSquare[idx][sr * 9 + sc];
                   }
-
+          
                   private int x_scoreMove(int move, int ply, int ttMove) {
                       if (move == ttMove) return 2_000_000;
                       int sr = x_sr(move), sc = x_sc(move), er = x_er(move), ec = x_ec(move);
@@ -1685,7 +1731,7 @@ jobs:
                       int history = x_historyTable[getPieceIndex(attacker)][er * 9 + ec];
                       return history + x_pieceSquareDelta(attacker, sr, sc, er, ec) * 8;
                   }
-
+          
                   /**
                    * 生成当前一方的走法并按 TT、吃子、killer、history、位置增益排序。
                    * 不在这里做合法性筛选，避免生成阶段重复走/还原棋盘；搜索循环中统一验证。
@@ -1709,7 +1755,7 @@ jobs:
                               }
                           }
                       }
-
+          
                       // 插入排序在象棋通常 30~50 个候选上比对象数组排序更省分配、更稳定。
                       for (int i = 1; i < count; i++) {
                           int move = moves[i];
@@ -1725,7 +1771,7 @@ jobs:
                       }
                       return count;
                   }
-
+          
                   private boolean x_hasNullMoveMaterial(boolean redTurn) {
                       int active = 0;
                       int value = 0;
@@ -1740,7 +1786,7 @@ jobs:
                       }
                       return active >= 2 && value >= 900;
                   }
-
+          
                   private long x_hashAfterMove(long hash, int move, char moving, char captured) {
                       int sr = x_sr(move), sc = x_sc(move), er = x_er(move), ec = x_ec(move);
                       long next = hash;
@@ -1750,7 +1796,7 @@ jobs:
                       next ^= x_zobristTurn[0] ^ x_zobristTurn[1];
                       return next;
                   }
-
+          
                   private boolean x_isRepetition(long hash, int ply) {
                       int occurrences = 0;
                       // 历史列表最后一个是当前实战局面，搜索路径里也会出现一次，所以跳过最后一个历史项。
@@ -1763,24 +1809,24 @@ jobs:
                       }
                       return occurrences >= 3;
                   }
-
+          
                   private int x_sideEval(boolean redTurn, int ply) {
                       int redScore = x_evalBoard(x_board, ply);
                       return redTurn ? redScore : -redScore;
                   }
-
+          
                   private void x_applySearchMove(int move) {
                       int sr = x_sr(move), sc = x_sc(move), er = x_er(move), ec = x_ec(move);
                       x_board[er][ec] = x_board[sr][sc];
                       x_board[sr][sc] = '.';
                   }
-
+          
                   private void x_restoreSearchMove(int move, char captured) {
                       int sr = x_sr(move), sc = x_sc(move), er = x_er(move), ec = x_ec(move);
                       x_board[sr][sc] = x_board[er][ec];
                       x_board[er][ec] = captured;
                   }
-
+          
                   /**
                    * 静止搜索：被将军时搜索全部解将步；平静局面只搜索吃子。
                    * 这样既避免“看到一半吃子”的地平线效应，也不再像旧版那样无限扩大普通走法。
@@ -1789,14 +1835,14 @@ jobs:
                       if (!searchActive()) return x_sideEval(redTurn, ply);
                       if (ply >= MAX_PLY - 2 || qDepth >= 12) return x_sideEval(redTurn, ply);
                       if (x_isRepetition(hash, ply)) return 0;
-
+          
                       boolean inCheck = x_isInCheck(x_board, redTurn);
                       int standPat = x_sideEval(redTurn, ply);
                       if (!inCheck) {
                           if (standPat >= beta) return standPat;
                           if (standPat > alpha) alpha = standPat;
                       }
-
+          
                       int ttMove = -1;
                       int ttIdx = (int) (hash & TT_MASK);
                       if (x_ttKeys[ttIdx] == hash) ttMove = x_ttBestMoves[ttIdx];
@@ -1808,14 +1854,14 @@ jobs:
                           char captured = x_board[er][ec];
                           if (!inCheck && captured == '.') continue;
                           if (!x_isLegalMove(x_board, move, redTurn)) continue;
-
+          
                           // Delta pruning：明显不足以抬高 alpha 的低价值吃子可跳过；将军局面绝不裁剪。
                           if (!inCheck && captured != '.'
                                   && standPat + x_pieceValue(captured) + 180 < alpha
                                   && Character.toLowerCase(captured) != 'k') {
                               continue;
                           }
-
+          
                           legal++;
                           int sr = x_sr(move), sc = x_sc(move);
                           char moving = x_board[sr][sc];
@@ -1834,13 +1880,13 @@ jobs:
                       if (inCheck && legal == 0) return -X_MATE_SCORE + ply;
                       return alpha;
                   }
-
+          
                   private int x_quiesce(int alpha, int beta, boolean isMax, int qDepth) {
                       long hash = x_zobristHash ^ x_zobristTurn[isMax ? 0 : 1];
                       x_pathHashes[0] = hash;
                       return x_quiesce(alpha, beta, isMax, hash, 0, qDepth);
                   }
-
+          
                   /**
                    * Negamax + PVS + TT + 空步裁剪 + LMR。
                    * 分数始终是“当前走棋方视角”，从而消除旧版红方最大/黑方最小两套分支的边界错误。
@@ -1850,11 +1896,11 @@ jobs:
                       if (!searchActive()) return x_sideEval(redTurn, ply);
                       if (ply >= MAX_PLY - 2) return x_sideEval(redTurn, ply);
                       if (x_isRepetition(hash, ply)) return 0;
-
+          
                       boolean inCheck = x_isInCheck(x_board, redTurn);
                       if (inCheck && depth > 0 && ply < 14) depth++;
                       if (depth <= 0) return x_quiesce(alpha, beta, redTurn, hash, ply, 0);
-
+          
                       int originalAlpha = alpha;
                       int originalBeta = beta;
                       int ttIdx = (int) (hash & TT_MASK);
@@ -1870,7 +1916,7 @@ jobs:
                               if (alpha >= beta) return ttScore;
                           }
                       }
-
+          
                       // 正确的空窗空步裁剪。残局/被将军时禁用，降低 zugzwang 误判。
                       if (allowNull && depth >= 4 && !inCheck && x_hasNullMoveMaterial(redTurn)) {
                           int reduction = depth >= 7 ? 3 : 2;
@@ -1881,13 +1927,13 @@ jobs:
                           if (!searchActive()) return nullScore;
                           if (nullScore >= beta) return nullScore;
                       }
-
+          
                       int count = x_generateMoves(ply, redTurn, ttMove, false);
                       int legalCount = 0;
                       int bestMove = -1;
                       int bestScore = -X_MATE_SCORE - 1;
                       int safePly = Math.min(ply, MAX_PLY - 1);
-
+          
                       for (int i = 0; i < count && searchActive(); i++) {
                           int move = x_moveBuffer[safePly][i];
                           if (!x_isLegalMove(x_board, move, redTurn)) continue;
@@ -1899,7 +1945,7 @@ jobs:
                           long nextHash = x_hashAfterMove(hash, move, moving, captured);
                           x_applySearchMove(move);
                           x_pathHashes[ply + 1] = nextHash;
-
+          
                           int score;
                           try {
                               int childDepth = depth - 1;
@@ -1925,7 +1971,7 @@ jobs:
                           } finally {
                               x_restoreSearchMove(move, captured);
                           }
-
+          
                           if (score > bestScore) {
                               bestScore = score;
                               bestMove = move;
@@ -1947,10 +1993,10 @@ jobs:
                               break;
                           }
                       }
-
+          
                       if (legalCount == 0) return -X_MATE_SCORE + ply;
                       if (bestMove == -1) return x_sideEval(redTurn, ply);
-
+          
                       if (searchActive()) {
                           byte flag = bestScore <= originalAlpha ? TT_UPPER
                                   : bestScore >= originalBeta ? TT_LOWER : TT_EXACT;
@@ -1968,13 +2014,13 @@ jobs:
                       }
                       return bestScore;
                   }
-
+          
                   /** 保留旧方法签名，内部改由新的 Negamax 搜索实现。 */
                   private int x_alphaBeta(int depth, int alpha, int beta, boolean isMax, long hash, boolean isNull) {
                       x_pathHashes[0] = hash;
                       return x_negamax(Math.min(depth, MAX_PLY - 2), alpha, beta, isMax, hash, 0, !isNull);
                   }
-
+          
                   private int x_iterativeDeepening(int maxDepth) {
                       x_lastCompletedBestMove = -1;
                       int previousScore = 0;
@@ -2005,14 +2051,14 @@ jobs:
                       }
                       return x_lastCompletedBestMove;
                   }
-
+          
                   private long x_timeBudgetMillis(int depth) {
                       if (depth <= 3) return 3_800L;
                       if (depth <= 6) return 10_600L;
                       if (depth <= 9) return 20_000L;
                       return Math.min(38_000L, 18_000L + (depth - 9L) * 5_500L);
                   }
-
+          
                   private void triggerXiangqiAiMove() {
                       if (x_aiThinking || x_gameOver) return;
                       x_aiThinking = true;
@@ -2024,7 +2070,7 @@ jobs:
                       invalidate();
                       removeCallbacks(timerRunnable);
                       postDelayed(timerRunnable, 1000L);
-
+          
                       aiExecutor.execute(() -> {
                           int bestMove = -1;
                           Throwable error = null;
@@ -2046,7 +2092,7 @@ jobs:
                           } catch (Throwable t) {
                               error = t;
                           }
-
+          
                           final int chosen = bestMove;
                           final Throwable searchError = error;
                           final boolean canceledBeforePost = !tokenStillCurrent(token) || !keepThinking;
@@ -2087,14 +2133,14 @@ jobs:
                           });
                       });
                   }
-
+          
                   private void x_makeMove(int sr, int sc, int er, int ec) {
                       char moving = x_board[sr][sc];
                       char captured = x_board[er][ec];
                       x_zobristHash ^= x_zobristTable[sr][sc][getPieceIndex(moving)];
                       if (captured != '.') x_zobristHash ^= x_zobristTable[er][ec][getPieceIndex(captured)];
                       x_zobristHash ^= x_zobristTable[er][ec][getPieceIndex(moving)];
-
+          
                       x_board[er][ec] = moving;
                       x_board[sr][sc] = '.';
                       x_moveHistory.add(new XMoveRecord(sr, sc, er, ec, captured));
@@ -2105,19 +2151,19 @@ jobs:
                       x_positionHistory.add(x_zobristHash ^ x_zobristTurn[x_isRedTurn ? 0 : 1]);
                       syncXiangqiBoard();
                   }
-
+          
                   private boolean x_undoSingleMove() {
                       if (x_moveHistory.isEmpty()) return false;
                       if (!x_positionHistory.isEmpty()) x_positionHistory.remove(x_positionHistory.size() - 1);
                       XMoveRecord move = x_moveHistory.remove(x_moveHistory.size() - 1);
                       char moving = x_board[move.er][move.ec];
-
+          
                       x_zobristHash ^= x_zobristTable[move.er][move.ec][getPieceIndex(moving)];
                       if (move.captured != '.') {
                           x_zobristHash ^= x_zobristTable[move.er][move.ec][getPieceIndex(move.captured)];
                       }
                       x_zobristHash ^= x_zobristTable[move.sr][move.sc][getPieceIndex(moving)];
-
+          
                       x_board[move.sr][move.sc] = moving;
                       x_board[move.er][move.ec] = move.captured;
                       x_isRedTurn = !x_isRedTurn;
@@ -2133,7 +2179,7 @@ jobs:
                       syncXiangqiBoard();
                       return true;
                   }
-
+          
                   private void x_undoMove() {
                       int wanted = x_gameMode == 0 ? 2 : 1;
                       int pops = Math.min(wanted, x_moveHistory.size());
@@ -2142,16 +2188,16 @@ jobs:
                       updateStatusMsg();
                       invalidate();
                   }
-
+          
                   // ================= 绘图与 UI 引擎 =================
-
+          
                   @Override
                   protected void onDraw(Canvas canvas) {
                       super.onDraw(canvas);
                       w = getWidth();
                       margin = w * 0.06f;
                       canvas.drawColor(currentGameType == 0 ? Color.WHITE : COLOR_X_BOARD);
-
+          
                       String modeText = currentGameType == 0
                               ? (g_gameMode == 0 ? "模式: 人机对战" : "模式: 双人对战")
                               : (x_gameMode == 0 ? "模式: 人机对战" : "模式: 双人对战");
@@ -2161,12 +2207,12 @@ jobs:
                       float modeBtnY = margin;
                       drawBtn(canvas, modeText, modeBtnX, modeBtnY, modeBtnX + modeBtnW,
                               modeBtnY + modeBtnH, COLOR_BTN_GRAY, Color.BLACK, w * 0.04f);
-
+          
                       float ruleBtnW = w * 0.10f;
                       float ruleBtnX = w - margin - ruleBtnW;
                       drawBtn(canvas, "❓", ruleBtnX, margin, ruleBtnX + ruleBtnW,
                               margin + ruleBtnW, COLOR_BTN_LIGHT, Color.BLACK, w * 0.05f);
-
+          
                       float boardWidth = w - 2f * margin;
                       float xiangqiHeight = boardWidth / 8f * 9f;
                       float heightDiff = xiangqiHeight - boardWidth;
@@ -2178,12 +2224,12 @@ jobs:
                           drawXiangqiUI(canvas, boardWidth);
                       }
                   }
-
+          
                   private void drawGomokuUI(Canvas canvas, float size) {
                       g_boardSize = size;
                       g_cellSize = g_boardSize / 14f;
                       startX = margin;
-
+          
                       paint.setColor(Color.BLACK);
                       paint.setStyle(Paint.Style.STROKE);
                       paint.setStrokeWidth(5f);
@@ -2204,7 +2250,7 @@ jobs:
                                       g_cellSize * 0.15f, paint);
                           }
                       }
-
+          
                       for (int r = 0; r < G_BOARD_SIZE; r++) {
                           for (int c = 0; c < G_BOARD_SIZE; c++) {
                               int stone = g_displayBoard[r][c];
@@ -2230,13 +2276,13 @@ jobs:
                       }
                       drawBottomMenu(canvas, startY + g_boardSize, g_statusMsg, g_aiThinking, g_aiDepth);
                   }
-
+          
                   private void drawXiangqiUI(Canvas canvas, float width) {
                       x_boardWidth = width;
                       x_cellSize = x_boardWidth / 8f;
                       x_boardHeight = x_cellSize * 9f;
                       startX = margin;
-
+          
                       paint.setColor(Color.BLACK);
                       paint.setStyle(Paint.Style.STROKE);
                       paint.setStrokeWidth(4f);
@@ -2263,7 +2309,7 @@ jobs:
                               startX + 5f * x_cellSize, startY + 9f * x_cellSize, paint);
                       canvas.drawLine(startX + 5f * x_cellSize, startY + 7f * x_cellSize,
                               startX + 3f * x_cellSize, startY + 9f * x_cellSize, paint);
-
+          
                       paint.setStyle(Paint.Style.FILL);
                       paint.setColor(Color.BLACK);
                       paint.setTextSize(x_cellSize * 0.6f);
@@ -2271,7 +2317,7 @@ jobs:
                       Paint.FontMetrics riverFm = paint.getFontMetrics();
                       float riverY = startY + 4.5f * x_cellSize - (riverFm.descent + riverFm.ascent) / 2f;
                       canvas.drawText("楚 河            汉 界", startX + 4f * x_cellSize, riverY, paint);
-
+          
                       if (x_aiLastMove != null) {
                           paint.setColor(COLOR_CYAN);
                           paint.setStyle(Paint.Style.STROKE);
@@ -2286,7 +2332,7 @@ jobs:
                                   startX + x_aiLastMove[3] * x_cellSize + radius,
                                   startY + x_aiLastMove[2] * x_cellSize + radius, 8f, 8f, paint);
                       }
-
+          
                       boolean redInCheck = x_isInCheck(x_displayBoard, true);
                       boolean blackInCheck = x_isInCheck(x_displayBoard, false);
                       String pieceMap = "rnbakcpRNBAKCP";
@@ -2299,7 +2345,7 @@ jobs:
                               float cy = startY + r * x_cellSize;
                               float radius = x_cellSize * 0.42f;
                               int pieceColor = x_isRed(piece) ? COLOR_CRIMSON : Color.BLACK;
-
+          
                               paint.setStyle(Paint.Style.FILL);
                               paint.setColor(COLOR_PAPAYA);
                               canvas.drawCircle(cx, cy, radius, paint);
@@ -2317,7 +2363,7 @@ jobs:
                                   Paint.FontMetrics fm = paint.getFontMetrics();
                                   canvas.drawText(text, cx, cy - (fm.descent + fm.ascent) / 2f, paint);
                               }
-
+          
                               if (x_selectedPos != null && x_selectedPos[0] == r && x_selectedPos[1] == c) {
                                   paint.setColor(COLOR_GREEN);
                                   paint.setStyle(Paint.Style.STROKE);
@@ -2332,7 +2378,7 @@ jobs:
                               }
                           }
                       }
-
+          
                       paint.setStyle(Paint.Style.FILL);
                       paint.setColor(COLOR_GREEN);
                       for (int move : x_validMovesDisplay) {
@@ -2342,7 +2388,7 @@ jobs:
                       }
                       drawBottomMenu(canvas, startY + x_boardHeight, x_statusMsg, x_aiThinking, x_aiDepth);
                   }
-
+          
                   private void drawBottomMenu(Canvas canvas, float baseTop, String message,
                                               boolean thinking, int depth) {
                       float bottomY = baseTop + w * 0.11f;
@@ -2352,12 +2398,12 @@ jobs:
                       paint.setTextSize(w * 0.055f);
                       paint.setTextAlign(Paint.Align.CENTER);
                       canvas.drawText(message == null ? "" : message, w / 2f, bottomY, paint);
-
+          
                       float btnW = w * 0.20f;
                       float btnH = w * 0.096f;
                       float space = (w - 3f * btnW) / 4f;
                       float row1Y = bottomY + w * 0.06f;
-
+          
                       drawBtn(canvas, thinking ? "中断" : "悔棋", space, row1Y,
                               space + btnW, row1Y + btnH,
                               thinking ? COLOR_ORANGE : COLOR_BTN_GRAY,
@@ -2368,7 +2414,7 @@ jobs:
                       drawBtn(canvas, "退出", space * 3f + btnW * 2f, row1Y,
                               space * 3f + btnW * 3f, row1Y + btnH,
                               COLOR_RED, Color.WHITE, w * 0.04f);
-
+          
                       int mode = currentGameType == 0 ? g_gameMode : x_gameMode;
                       float row3Y = row1Y;
                       if (mode == 0) {
@@ -2388,7 +2434,7 @@ jobs:
                                   space * 3f + btnW * 3f, row2Y + btnH,
                                   depth == d3 ? COLOR_BLUE : COLOR_BTN_LIGHT,
                                   Color.BLACK, w * 0.032f);
-
+          
                           row3Y = row2Y + btnH + w * 0.04f;
                           drawBtn(canvas, "-", space, row3Y, space + btnW, row3Y + btnH,
                                   COLOR_BTN_GRAY, Color.BLACK, w * 0.05f);
@@ -2401,7 +2447,7 @@ jobs:
                           drawBtn(canvas, "+", w - space - btnW, row3Y, w - space, row3Y + btnH,
                                   COLOR_BTN_GRAY, Color.BLACK, w * 0.05f);
                       }
-
+          
                       float switchBtnW = w * 0.5f;
                       float switchBtnH = w * 0.11f;
                       float switchBtnX = w / 2f - switchBtnW / 2f;
@@ -2412,7 +2458,7 @@ jobs:
                               switchBtnX + switchBtnW, switchBtnY + switchBtnH,
                               switchBg, Color.WHITE, w * 0.045f);
                   }
-
+          
                   private void drawBtn(Canvas canvas, String text, float left, float top,
                                        float right, float bottom, int bg, int fg, float textSize) {
                       paint.setStyle(Paint.Style.FILL);
@@ -2425,18 +2471,18 @@ jobs:
                       canvas.drawText(text, left + (right - left) / 2f,
                               top + (bottom - top) / 2f - (fm.descent + fm.ascent) / 2f, paint);
                   }
-
+          
                   private void showRulesDialog() {
                       String rule = currentGameType == 0
-                              ? "【五子棋规则】\n只要某一方连成5子即为胜利！\n黑棋白棋均受禁手限制（防误触），点错有提示不判负。\n\n【AI改进】\n1. 强制胜着与强制防守优先\n2. 更精准的活三、冲四、跳四与组合威胁评估\n3. PVS、置换表、迭代加深与后期减枝\n4. 候选走法排序并保留关键攻防点"
-                              : "【中国象棋规则】\n经典中国象棋规则，当对方被将死(无路可解将)或困毙(无棋可走)即为胜利！\n将帅不能直接面对面（防对视）。\n\n【绝杀判定说明】\n- 仅当对方完全没有任何合法走法时才判绝杀\n- 被将军时将/帅会红色高亮提示\n- 状态栏显示[将军!]提示\n- 区分'绝杀'(被将军无解)与'困毙'(未被将军但无棋可走)\n\n【AI改进】\n1. 历史严格匹配的开局库\n2. PVS、置换表、空步裁剪、LMR和静止搜索\n3. MVV-LVA、killer与history走法排序\n4. 棋子位置、机动性、保护关系和悬子惩罚\n5. 将帅安全、将军延伸与重复局面处理\n\n提示：面对'炮'的隔子将军时，由于炮攻击的是整条线，将帅顺着这条线移动不一定能解将，请以绿色合法落点为准。";
+                              ? "【五子棋规则】\n任一方在横、竖或斜线方向连续形成5子即获胜。\n黑棋和白棋均启用双三、双四等禁手检测；点到禁手位置只会提示，不会直接判负。\n\n【技术细节】\nAI全程离线运行，使用候选点筛选、迭代加深、Alpha-Beta/PVS搜索与局面缓存。不同深度主要影响思考时间和搜索范围。"
+                              : "【中国象棋规则】\n遵循经典中国象棋规则。将死或困毙均判负；将帅不能在同一路线上无子相对。\n\n【判定与提示】\n- 被将军时将/帅会红色高亮，状态栏显示[将军!]\n- 绝杀：被将军且没有合法解将步\n- 困毙：未被将军但没有任何合法走法\n- 绿色圆点表示当前棋子的合法落点\n\n【技术细节】\nAI全程离线运行，使用开局线、迭代加深、PVS/Alpha-Beta、置换表与静止搜索。面对炮的隔子将军时，请以绿色合法落点为准。";
                       new AlertDialog.Builder(getContext())
                               .setTitle("❓ 游戏规则与说明")
                               .setMessage(rule)
                               .setPositiveButton("我知道了", null)
                               .show();
                   }
-
+          
                   private float currentBoardBottom() {
                       float boardWidth = w - 2f * margin;
                       if (currentGameType == 0) {
@@ -2447,7 +2493,7 @@ jobs:
                       float top = margin + w * 0.25f - (xiangqiHeight - boardWidth) / 2f;
                       return top + xiangqiHeight;
                   }
-
+          
                   private void requestAiInterrupt() {
                       if (currentGameType == 0 && g_aiThinking) {
                           rollbackAfterCancel = !g_moveHistory.isEmpty()
@@ -2462,19 +2508,19 @@ jobs:
                       }
                       invalidate();
                   }
-
+          
                   @Override
                   public boolean onTouchEvent(MotionEvent event) {
                       if (event.getAction() != MotionEvent.ACTION_DOWN) return true;
                       float ex = event.getX(), ey = event.getY();
-
+          
                       float modeBtnW = w * 0.40f;
                       float modeBtnH = w * 0.12f;
                       float modeBtnX = w / 2f - modeBtnW / 2f;
                       float modeBtnY = margin;
                       float ruleBtnW = w * 0.10f;
                       float ruleBtnX = w - margin - ruleBtnW;
-
+          
                       if (checkClick(ex, ey, ruleBtnX, margin,
                               ruleBtnX + ruleBtnW, margin + ruleBtnW)) {
                           showRulesDialog();
@@ -2492,13 +2538,13 @@ jobs:
                           }
                           return true;
                       }
-
+          
                       float bottomY = currentBoardBottom() + w * 0.11f;
                       float btnW = w * 0.20f;
                       float btnH = w * 0.096f;
                       float space = (w - 3f * btnW) / 4f;
                       float row1Y = bottomY + w * 0.06f;
-
+          
                       if (checkClick(ex, ey, space, row1Y, space + btnW, row1Y + btnH)) {
                           boolean thinking = currentGameType == 0 ? g_aiThinking : x_aiThinking;
                           if (thinking) requestAiInterrupt();
@@ -2522,7 +2568,7 @@ jobs:
                           if (context instanceof Activity) ((Activity) context).finish();
                           return true;
                       }
-
+          
                       boolean thinking = currentGameType == 0 ? g_aiThinking : x_aiThinking;
                       int mode = currentGameType == 0 ? g_gameMode : x_gameMode;
                       float row3Y = row1Y;
@@ -2555,7 +2601,7 @@ jobs:
                               return true;
                           }
                       }
-
+          
                       float switchBtnW = w * 0.5f;
                       float switchBtnH = w * 0.11f;
                       float switchBtnX = w / 2f - switchBtnW / 2f;
@@ -2569,7 +2615,7 @@ jobs:
                           }
                           return true;
                       }
-
+          
                       if (currentGameType == 0 && !g_gameOver && !g_aiThinking) {
                           handleGomokuTouch(ex, ey);
                       } else if (currentGameType == 1 && !x_gameOver && !x_aiThinking) {
@@ -2577,27 +2623,27 @@ jobs:
                       }
                       return true;
                   }
-
+          
                   private boolean checkClick(float x, float y, float left, float top,
                                              float right, float bottom) {
                       return x >= left && x <= right && y >= top && y <= bottom;
                   }
-
+          
                   private int getDepth() {
                       return currentGameType == 0 ? g_aiDepth : x_aiDepth;
                   }
-
+          
                   private int getMaxDepth() {
                       return currentGameType == 0 ? G_MAX_USER_DEPTH : X_MAX_USER_DEPTH;
                   }
-
+          
                   private void setDepth(int depth) {
                       if (currentGameType == 0) g_aiDepth = clamp(depth, 1, G_MAX_USER_DEPTH);
                       else x_aiDepth = clamp(depth, 1, X_MAX_USER_DEPTH);
                       updateStatusMsg();
                       invalidate();
                   }
-
+          
                   private void handleGomokuTouch(float ex, float ey) {
                       if (g_gameMode != 1 && g_currentPlayer != g_humanColor) return;
                       int c = Math.round((ex - startX) / g_cellSize);
@@ -2620,7 +2666,7 @@ jobs:
                       }
                       invalidate();
                   }
-
+          
                   private void x_selectPiece(int r, int c) {
                       x_selectedPos = new int[]{r, c};
                       x_validMovesDisplay.clear();
@@ -2630,13 +2676,13 @@ jobs:
                           if (x_isLegalMove(x_board, move, x_isRedTurn)) x_validMovesDisplay.add(move);
                       }
                   }
-
+          
                   private void handleXiangqiTouch(float ex, float ey) {
                       if (x_gameMode != 1 && !x_isRedTurn) return;
                       int c = Math.round((ex - startX) / x_cellSize);
                       int r = Math.round((ey - startY) / x_cellSize);
                       if (!insideX(r, c)) return;
-
+          
                       if (x_selectedPos != null) {
                           int sr = x_selectedPos[0], sc = x_selectedPos[1];
                           int selectedMove = encodeXMove(sr, sc, r, c);
@@ -2666,16 +2712,16 @@ jobs:
                   }
               }
           }
+
           JAVA
 
-                    # ================= 加入横屏斗地主：注册 Activity + 给棋类主界面增加入口 =================
+          # ================= 加入横屏斗地主：注册 Activity + 给棋类主界面增加入口 =================
           python3 <<'PY_PATCH'
           from pathlib import Path
           import re
 
           manifest_path = Path("app/src/main/AndroidManifest.xml")
           manifest = manifest_path.read_text(encoding="utf-8")
-          manifest = manifest.replace('android:label="五子棋"', 'android:label="棋类与斗地主"')
           if 'android:name=".PokerActivity"' not in manifest:
               activity_xml = '''<activity
               android:name=".PokerActivity"
@@ -2691,12 +2737,6 @@ jobs:
               replacement = formatted + "\n" + indent + "</application>"
               manifest = manifest[:match.start()] + replacement + manifest[match.end():]
           manifest_path.write_text(manifest, encoding="utf-8")
-
-          gradle_path = Path("app/build.gradle")
-          gradle_text = gradle_path.read_text(encoding="utf-8")
-          gradle_text = gradle_text.replace('versionCode 3', 'versionCode 4')
-          gradle_text = gradle_text.replace('versionName "1.2"', 'versionName "1.3"')
-          gradle_path.write_text(gradle_text, encoding="utf-8")
 
           main_path = Path("app/src/main/java/com/gomoku/app/MainActivity.java")
           source = main_path.read_text(encoding="utf-8")
@@ -2792,7 +2832,7 @@ jobs:
 
           cat > app/src/main/java/com/gomoku/app/PokerActivity.java <<'JAVA_POKER'
           package com.gomoku.app;
-
+          
           import android.app.Activity;
           import android.app.AlertDialog;
           import android.content.Context;
@@ -2811,7 +2851,7 @@ jobs:
           import android.view.View;
           import android.view.Window;
           import android.view.WindowManager;
-
+          
           import java.util.ArrayList;
           import java.util.Arrays;
           import java.util.Collections;
@@ -2819,20 +2859,19 @@ jobs:
           import java.util.HashMap;
           import java.util.HashSet;
           import java.util.List;
-          import java.util.Locale;
           import java.util.Map;
           import java.util.Random;
           import java.util.Set;
           import java.util.concurrent.ExecutorService;
           import java.util.concurrent.Executors;
           import java.util.concurrent.atomic.AtomicInteger;
-
+          
           /**
            * 横屏斗地主。规则、绘制、AI 与状态机全部本地运行，不需要网络权限。
            */
           public class PokerActivity extends Activity {
               private PokerView pokerView;
-
+          
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
@@ -2843,26 +2882,26 @@ jobs:
                   pokerView = new PokerView(this);
                   setContentView(pokerView);
               }
-
+          
               @Override
               protected void onDestroy() {
                   if (pokerView != null) pokerView.shutdown();
                   super.onDestroy();
               }
-
+          
               static final class Card {
                   final int id;
                   final int rank; // 3..17，16 小王，17 大王
                   final int suit; // 0♠ 1♥ 2♣ 3♦，王为 4/5
                   boolean selected;
-
+          
                   Card(int id, int rank, int suit) {
                       this.id = id;
                       this.rank = rank;
                       this.suit = suit;
                   }
               }
-
+          
               static final class Combo {
                   static final int INVALID = -1;
                   static final int SINGLE = 0;
@@ -2879,42 +2918,42 @@ jobs:
                   static final int FOUR_TWO_PAIR = 11;
                   static final int BOMB = 12;
                   static final int ROCKET = 13;
-
+          
                   final int type;
                   final int mainRank;
                   final int cardCount;
                   final int serialLength;
-
+          
                   Combo(int type, int mainRank, int cardCount, int serialLength) {
                       this.type = type;
                       this.mainRank = mainRank;
                       this.cardCount = cardCount;
                       this.serialLength = serialLength;
                   }
-
+          
                   boolean valid() { return type != INVALID; }
               }
-
+          
               static final class Play {
                   final ArrayList<Card> cards;
                   final Combo combo;
                   int score;
-
+          
                   Play(List<Card> cards, Combo combo) {
                       this.cards = new ArrayList<>(cards);
                       this.cards.sort(CARD_COMPARATOR);
                       this.combo = combo;
                   }
               }
-
+          
               static final Comparator<Card> CARD_COMPARATOR = (a, b) -> {
                   if (a.rank != b.rank) return Integer.compare(a.rank, b.rank);
                   return Integer.compare(a.suit, b.suit);
               };
-
+          
               static final class DoudizhuRules {
                   private DoudizhuRules() {}
-
+          
                   static Combo parse(List<Card> cards) {
                       if (cards == null || cards.isEmpty()) return new Combo(Combo.INVALID, 0, 0, 0);
                       int n = cards.size();
@@ -2925,7 +2964,7 @@ jobs:
                           min = Math.min(min, card.rank);
                           max = Math.max(max, card.rank);
                       }
-
+          
                       if (n == 2 && counts[16] == 1 && counts[17] == 1) {
                           return new Combo(Combo.ROCKET, 17, 2, 1);
                       }
@@ -2933,7 +2972,7 @@ jobs:
                       if (n == 2 && distinct == 1) return new Combo(Combo.PAIR, max, 2, 1);
                       if (n == 3 && distinct == 1) return new Combo(Combo.TRIO, max, 3, 1);
                       if (n == 4 && distinct == 1) return new Combo(Combo.BOMB, max, 4, 1);
-
+          
                       int trioRank = -1, pairRank = -1, fourRank = -1;
                       for (int r = 3; r <= 17; r++) {
                           if (counts[r] == 4) fourRank = r;
@@ -2952,7 +2991,7 @@ jobs:
                           for (int r = 3; r <= 17; r++) if (r != fourRank && counts[r] == 2) pairs++;
                           if (pairs == 2) return new Combo(Combo.FOUR_TWO_PAIR, fourRank, 8, 1);
                       }
-
+          
                       if (n >= 5 && max < 15 && distinct == n && max - min + 1 == n) {
                           return new Combo(Combo.STRAIGHT, max, n, n);
                       }
@@ -2961,11 +3000,11 @@ jobs:
                           for (int r = min; r <= max; r++) if (counts[r] != 2) { allPairs = false; break; }
                           if (allPairs) return new Combo(Combo.PAIR_STRAIGHT, max, n, n / 2);
                       }
-
+          
                       Combo plane = parseAirplane(counts, n);
                       return plane != null ? plane : new Combo(Combo.INVALID, 0, n, 0);
                   }
-
+          
                   private static Combo parseAirplane(int[] counts, int n) {
                       for (int start = 3; start <= 14; start++) {
                           for (int end = start + 1; end <= 14; end++) {
@@ -2975,7 +3014,7 @@ jobs:
                                   if (counts[r] < 3) { body = false; break; }
                               }
                               if (!body) continue;
-
+          
                               int remain = n - k * 3;
                               if (remain == 0) {
                                   boolean exact = true;
@@ -3016,7 +3055,7 @@ jobs:
                       }
                       return null;
                   }
-
+          
                   static boolean beats(Combo play, Combo table) {
                       if (play == null || table == null || !play.valid()) return false;
                       if (play.type == Combo.ROCKET) return table.type != Combo.ROCKET;
@@ -3030,7 +3069,7 @@ jobs:
                               && play.serialLength == table.serialLength
                               && play.mainRank > table.mainRank;
                   }
-
+          
                   static String typeName(Combo combo) {
                       if (combo == null) return "";
                       switch (combo.type) {
@@ -3051,7 +3090,7 @@ jobs:
                           default: return "无效牌型";
                       }
                   }
-
+          
                   static ArrayList<Play> generateLegalPlays(List<Card> hand, Combo table, int limit) {
                       ArrayList<Play> result = new ArrayList<>();
                       int[] counts = new int[18];
@@ -3060,7 +3099,7 @@ jobs:
                       for (int r = 0; r < 18; r++) byRank[r] = new ArrayList<>();
                       for (Card c : hand) { counts[c.rank]++; byRank[c.rank].add(c); }
                       for (int r = 3; r <= 17; r++) byRank[r].sort(CARD_COMPARATOR);
-
+          
                       Set<String> dedupe = new HashSet<>();
                       if (table == null) {
                           generateAllBase(result, dedupe, counts, byRank, limit);
@@ -3086,7 +3125,7 @@ jobs:
                       if (result.size() > limit) return new ArrayList<>(result.subList(0, limit));
                       return result;
                   }
-
+          
                   private static void generateAllBase(ArrayList<Play> out, Set<String> seen, int[] counts,
                                                       ArrayList<Card>[] byRank, int limit) {
                       for (int r = 3; r <= 17; r++) if (counts[r] >= 1) add(out, seen, byRank[r].subList(0, 1), limit);
@@ -3110,7 +3149,7 @@ jobs:
                           rocket.add(byRank[16].get(0)); rocket.add(byRank[17].get(0)); add(out, seen, rocket, limit);
                       }
                   }
-
+          
                   private static void generateSameType(ArrayList<Play> out, Set<String> seen, int[] counts,
                                                        ArrayList<Card>[] byRank, Combo table, int limit) {
                       switch (table.type) {
@@ -3162,7 +3201,7 @@ jobs:
                               break;
                       }
                   }
-
+          
                   private static void generateStraights(ArrayList<Play> out, Set<String> seen, int[] counts,
                                                         ArrayList<Card>[] byRank, int copies,
                                                         int minLen, int maxLen, int minMainExclusive, int limit) {
@@ -3179,7 +3218,7 @@ jobs:
                           }
                       }
                   }
-
+          
                   private static void generateAirplanes(ArrayList<Play> out, Set<String> seen, int[] counts,
                                                         ArrayList<Card>[] byRank, int requiredType,
                                                         int minMainExclusive, int limit) {
@@ -3193,11 +3232,11 @@ jobs:
                               ArrayList<Card> body = new ArrayList<>();
                               for (int r = start; r <= end; r++) body.addAll(byRank[r].subList(0, 3));
                               if (requiredType == -1 || requiredType == Combo.AIRPLANE) add(out, seen, body, limit);
-
+          
                               ArrayList<Card> loose = new ArrayList<>();
                               ArrayList<Integer> pairRanks = new ArrayList<>();
                               for (int r = 3; r <= 17; r++) {
-                                  if (r >= start && r <= end) continue; // 翅膀不得取自飞机主体牌点
+                                  if (r >= start && r <= end) continue;
                                   int left = counts[r];
                                   for (int i = 0; i < left; i++) loose.add(byRank[r].get(i));
                                   if (left >= 2 && r <= 15) pairRanks.add(r);
@@ -3207,23 +3246,23 @@ jobs:
                                   addWingVariants(out, seen, body, loose, k, limit);
                               }
                               if ((requiredType == -1 || requiredType == Combo.AIRPLANE_PAIR) && pairRanks.size() >= k) {
-                                  choosePairWings(out, seen, body, byRank, counts, start, end,
+                                  choosePairWings(out, seen, body, byRank, start, end,
                                           pairRanks, 0, k, new ArrayList<>(), limit);
                               }
                           }
                       }
                   }
-
+          
                   private static void addWingVariants(ArrayList<Play> out, Set<String> seen, ArrayList<Card> body,
                                                       ArrayList<Card> loose, int k, int limit) {
                       ArrayList<Card> low = new ArrayList<>(body);
                       low.addAll(loose.subList(0, k));
                       add(out, seen, low, limit);
-
+          
                       ArrayList<Card> high = new ArrayList<>(body);
                       high.addAll(loose.subList(loose.size() - k, loose.size()));
                       add(out, seen, high, limit);
-
+          
                       ArrayList<Card> preservePairs = new ArrayList<>();
                       int[] local = new int[18];
                       for (Card c : loose) local[c.rank]++;
@@ -3235,9 +3274,9 @@ jobs:
                           add(out, seen, p, limit);
                       }
                   }
-
+          
                   private static void choosePairWings(ArrayList<Play> out, Set<String> seen, ArrayList<Card> body,
-                                                      ArrayList<Card>[] byRank, int[] counts, int planeStart, int planeEnd,
+                                                      ArrayList<Card>[] byRank, int planeStart, int planeEnd,
                                                       ArrayList<Integer> ranks, int index, int need,
                                                       ArrayList<Integer> chosen, int limit) {
                       if (out.size() >= limit) return;
@@ -3253,12 +3292,12 @@ jobs:
                       }
                       for (int i = index; i <= ranks.size() - (need - chosen.size()); i++) {
                           chosen.add(ranks.get(i));
-                          choosePairWings(out, seen, body, byRank, counts, planeStart, planeEnd,
+                          choosePairWings(out, seen, body, byRank, planeStart, planeEnd,
                                   ranks, i + 1, need, chosen, limit);
                           chosen.remove(chosen.size() - 1);
                       }
                   }
-
+          
                   private static void generateFourWith(ArrayList<Play> out, Set<String> seen, int[] counts,
                                                        ArrayList<Card>[] byRank, int requiredType, int limit) {
                       for (int four = 3; four <= 15; four++) {
@@ -3292,11 +3331,11 @@ jobs:
                           }
                       }
                   }
-
+          
                   private static ArrayList<Card> take(ArrayList<Card>[] byRank, int rank, int amount) {
                       return new ArrayList<>(byRank[rank].subList(0, amount));
                   }
-
+          
                   private static void add(ArrayList<Play> out, Set<String> seen, List<Card> cards, int limit) {
                       if (out.size() >= limit || cards == null || cards.isEmpty()) return;
                       ArrayList<Card> copy = new ArrayList<>(cards);
@@ -3310,46 +3349,113 @@ jobs:
                       out.add(new Play(copy, combo));
                   }
               }
-
+          
               static final class AiEngine {
-                  static final int EASY = 0;
-                  static final int NORMAL = 1;
-                  static final int HARD = 2;
-                  static final int MASTER = 3;
-
+                  static final int NORMAL = 0;
+                  static final int HARD = 1;
+                  static final int MASTER = 2;
+                  static final int OMNISCIENT = 3;
+          
+                  private static final int PERFECT_WIN = 1_000_000;
+                  private static final byte TT_EXACT = 0;
+                  private static final byte TT_LOWER = 1;
+                  private static final byte TT_UPPER = 2;
+          
                   private final Random random = new Random();
-
-                  long budgetMillis(int difficulty) {
-                      switch (difficulty) {
-                          case EASY: return 350L;
-                          case NORMAL: return 850L;
-                          case HARD: return 1_900L;
-                          default: return 3_600L;
+                  private final HashMap<Long, SearchEntry> perfectTt = new HashMap<>();
+                  private boolean perfectTimedOut = false;
+          
+                  private static final class SearchEntry {
+                      final int depth;
+                      final int value;
+                      final byte flag;
+          
+                      SearchEntry(int depth, int value, byte flag) {
+                          this.depth = depth;
+                          this.value = value;
+                          this.flag = flag;
                       }
                   }
-
-                  int bid(List<Card> hand, int currentBid, int difficulty) {
+          
+                  long budgetMillis(int difficulty) {
+                      switch (difficulty) {
+                          case HARD: return 18_000L;
+                          case MASTER: return 22_000L;
+                          case OMNISCIENT: return 22_000L;
+                          default: return 10_000L;
+                      }
+                  }
+          
+                  int bid(int player, List<Card> hand, int currentBid, int difficulty,
+                          List<Card>[] allHands, List<Card> bottom) {
+                      double score = handStrength(hand);
+                      if (difficulty == OMNISCIENT && allHands != null && bottom != null) {
+                          // 透视档在叫分时连底牌和另外两家的真实强度也纳入计算。
+                          ArrayList<Card> projected = new ArrayList<>(hand);
+                          projected.addAll(bottom);
+                          double projectedStrength = handStrength(projected);
+                          double strongestOpponent = 0.0;
+                          double combinedOpponent = 0.0;
+                          for (int p = 0; p < allHands.length; p++) {
+                              if (p == player || allHands[p] == null) continue;
+                              double strength = handStrength(allHands[p]);
+                              strongestOpponent = Math.max(strongestOpponent, strength);
+                              combinedOpponent += strength;
+                          }
+                          score = projectedStrength
+                                  + Math.max(-1.5, projectedStrength - strongestOpponent) * 0.52
+                                  + Math.max(-1.0, projectedStrength * 2.0 - combinedOpponent) * 0.12;
+                      } else {
+                          double noise;
+                          if (difficulty == NORMAL) noise = 0.46;
+                          else if (difficulty == HARD) noise = 0.16;
+                          else noise = 0.035;
+                          score += random.nextDouble() * noise - noise / 2.0;
+                          if (difficulty >= HARD) score += controlPotential(hand) / 520.0;
+                      }
+                      int target = score >= 7.6 ? 3 : score >= 4.8 ? 2 : score >= 2.6 ? 1 : 0;
+                      return target > currentBid ? target : 0;
+                  }
+          
+                  private double handStrength(List<Card> hand) {
                       int[] counts = countRanks(hand);
                       double score = 0.0;
                       for (int r = 3; r <= 15; r++) {
-                          if (counts[r] == 4) score += 3.4;
-                          if (counts[r] == 3) score += r >= 12 ? 1.2 : 0.5;
+                          if (counts[r] == 4) score += 3.5;
+                          else if (counts[r] == 3) score += r >= 12 ? 1.25 : 0.55;
+                          else if (counts[r] == 2 && r >= 13) score += 0.28;
                       }
                       if (counts[17] == 1) score += 3.0;
-                      if (counts[16] == 1) score += 2.1;
-                      score += counts[15] * 1.25 + counts[14] * 0.55;
+                      if (counts[16] == 1) score += 2.15;
+                      score += counts[15] * 1.28 + counts[14] * 0.58;
                       int turns = estimateTurns(hand);
-                      score += Math.max(0, 9 - turns) * 0.45;
-                      if (difficulty == EASY) score += random.nextDouble() * 2.0 - 1.0;
-                      int target = score >= 7.3 ? 3 : score >= 4.5 ? 2 : score >= 2.4 ? 1 : 0;
-                      return target > currentBid ? target : 0;
+                      score += Math.max(0, 10 - turns) * 0.48;
+                      score += structureScore(hand) / 180.0;
+                      return score;
                   }
-
+          
                   Play choosePlay(int player, List<Card> hand, Combo table, int lastPlayer,
-                                  int landlord, int[] remainingCounts, List<Card> played,
+                                  int passCount, int landlord, int[] remainingCounts, List<Card> played,
+                                  List<Card> visibleBottom, List<Card>[] allHands,
                                   int difficulty, long deadlineNanos) {
-                      ArrayList<Play> legal = DoudizhuRules.generateLegalPlays(hand, table,
-                              difficulty >= HARD ? 520 : 260);
+                      if (difficulty == OMNISCIENT && allHands != null) {
+                          return choosePerfectInfoPlay(player, allHands, table, lastPlayer,
+                                  passCount, landlord, deadlineNanos);
+                      }
+                      return chooseFairPlay(player, hand, table, lastPlayer, landlord,
+                              remainingCounts, played, visibleBottom, difficulty, deadlineNanos);
+                  }
+          
+                  private Play chooseFairPlay(int player, List<Card> hand, Combo table, int lastPlayer,
+                                              int landlord, int[] remainingCounts, List<Card> played,
+                                              List<Card> visibleBottom, int difficulty,
+                                              long deadlineNanos) {
+                      int candidateLimit = difficulty >= MASTER ? 1_100
+                              : difficulty == HARD ? 820 : 560;
+                      int sampleCount = difficulty >= MASTER ? 2_400
+                              : difficulty == HARD ? 900 : 240;
+                      ArrayList<Play> legal = DoudizhuRules.generateLegalPlays(
+                              hand, table, candidateLimit);
                       if (legal.isEmpty()) return null;
 
                       boolean teammateLed = player != landlord && lastPlayer >= 0
@@ -3358,17 +3464,29 @@ jobs:
                               : landlord;
                       int enemyRemain = remainingCounts[enemy];
 
-                      if (difficulty == EASY) {
-                          legal.sort(Comparator.comparingInt(a -> a.combo.mainRank));
-                          int range = Math.min(3, legal.size());
-                          return legal.get(random.nextInt(range));
+                      ArrayList<Play> riskTargets = new ArrayList<>(legal);
+                      if (teammateLed && table != null) {
+                          riskTargets.add(new Play(Collections.emptyList(), table));
                       }
+                      long now = System.nanoTime();
+                      long remainingNanos = Math.max(0L, deadlineNanos - now);
+                      int samplingPercent = difficulty >= MASTER ? 76
+                              : difficulty == HARD ? 68 : 56;
+                      long samplingDeadline = now + remainingNanos * samplingPercent / 100L;
+                      Map<String, Double> responseRisk = estimateRelevantResponseRisk(player, hand,
+                              riskTargets, remainingCounts, played, visibleBottom, landlord,
+                              sampleCount, samplingDeadline);
 
-                      int sampleCount = difficulty == MASTER ? 68 : difficulty == HARD ? 28 : 0;
-                      Map<String, Double> beatProbability = sampleCount > 0
-                              ? estimateBeatProbabilities(player, hand, legal, remainingCounts, played,
-                              sampleCount, deadlineNanos)
-                              : Collections.emptyMap();
+                      double teammateTableRisk = table == null ? 0.0
+                              : responseRisk.getOrDefault(comboSignature(table), 0.5);
+                      int turnWeight = difficulty >= MASTER ? 246 : difficulty == HARD ? 228 : 210;
+                      int sequenceBonus = difficulty >= MASTER ? 124 : difficulty == HARD ? 106 : 90;
+                      int safeControlWeight = difficulty >= MASTER ? 3 : difficulty == HARD ? 2 : 1;
+                      int splitWeight = difficulty >= MASTER ? 3 : difficulty == HARD ? 2 : 1;
+                      double normalRiskWeight = difficulty >= MASTER ? 390.0
+                              : difficulty == HARD ? 305.0 : 220.0;
+                      double urgentRiskWeight = difficulty >= MASTER ? 720.0
+                              : difficulty == HARD ? 555.0 : 410.0;
 
                       Play best = null;
                       int bestScore = Integer.MIN_VALUE;
@@ -3377,95 +3495,520 @@ jobs:
                           ArrayList<Card> remain = new ArrayList<>(hand);
                           removeCards(remain, play.cards);
                           int turns = estimateTurns(remain);
-                          int score = -turns * 180 + play.cards.size() * 7;
-                          if (remain.isEmpty()) score += 1_000_000;
+                          int score = -turns * turnWeight + play.cards.size() * 8
+                                  + structureScore(remain) * (difficulty + 2) / 2;
+                          boolean finishes = remain.isEmpty();
+                          if (finishes) score += PERFECT_WIN;
 
-                          int controlCost = controlCost(play);
-                          score -= controlCost;
-                          if (play.combo.type == Combo.BOMB) score -= 250;
-                          if (play.combo.type == Combo.ROCKET) score -= 420;
+                          score -= controlCost(play);
+                          score -= splitStructurePenalty(hand, play) * splitWeight;
+                          score += controlPotential(remain) * safeControlWeight / 4;
+                          if (play.combo.type == Combo.BOMB) {
+                              score -= enemyRemain <= 2 ? 35
+                                      : difficulty >= MASTER ? 285 : 245;
+                          }
+                          if (play.combo.type == Combo.ROCKET) {
+                              score -= enemyRemain <= 2 ? 55
+                                      : difficulty >= MASTER ? 455 : 400;
+                          }
 
                           if (table != null) {
                               score -= play.combo.mainRank * 3;
-                              if (enemyRemain <= 2 && !teammateLed) score += play.combo.mainRank * 18;
-                          } else {
-                              if (play.combo.type == Combo.STRAIGHT || play.combo.type == Combo.PAIR_STRAIGHT
-                                      || play.combo.type == Combo.AIRPLANE || play.combo.type == Combo.AIRPLANE_SINGLE
-                                      || play.combo.type == Combo.AIRPLANE_PAIR) score += 70;
+                              if (enemyRemain <= 2 && !teammateLed) {
+                                  score += play.combo.mainRank * (difficulty >= MASTER ? 25 : 19);
+                              }
+                          } else if (isSequence(play.combo)) {
+                              score += sequenceBonus;
+                          }
+
+                          double risk = responseRisk.getOrDefault(comboSignature(play.combo), 0.5);
+                          if (!responseRisk.isEmpty()) {
+                              score += (int) ((1.0 - risk)
+                                      * (enemyRemain <= 2 ? urgentRiskWeight : normalRiskWeight));
+                          }
+
+                          if (enemyRemain == 1) {
+                              if (play.combo.type == Combo.SINGLE) {
+                                  score += play.combo.mainRank * (difficulty >= MASTER ? 34 : 25);
+                                  if (difficulty >= HARD && play.combo.mainRank < 12) score -= 190;
+                              } else {
+                                  score += difficulty >= MASTER ? 230 : 145;
+                              }
+                          } else if (enemyRemain == 2 && play.combo.type != Combo.SINGLE) {
+                              score += difficulty >= MASTER ? 105 : 62;
                           }
 
                           if (teammateLed) {
-                              score -= 180;
-                              if (remainingCounts[lastPlayer] <= 2) score -= 500;
-                              if (play.cards.size() == hand.size()) score += 1_000_000;
-                          }
-
-                          if (!beatProbability.isEmpty()) {
-                              double probability = beatProbability.getOrDefault(signature(play), 0.5);
-                              if (player == landlord || !teammateLed) {
-                                  score += (int) ((1.0 - probability) * 180.0);
+                              double emergencyThreshold = difficulty >= MASTER ? 0.27
+                                      : difficulty == HARD ? 0.31 : 0.36;
+                              double improvementMargin = difficulty >= MASTER ? 0.035
+                                      : difficulty == HARD ? 0.05 : 0.07;
+                              boolean emergency = enemyRemain <= 2
+                                      && teammateTableRisk >= emergencyThreshold
+                                      && risk + improvementMargin < teammateTableRisk;
+                              if (finishes) {
+                                  score += PERFECT_WIN;
+                              } else if (emergency) {
+                                  score += 410 + (int) ((teammateTableRisk - risk)
+                                          * (difficulty >= MASTER ? 1_120.0 : 760.0));
                               } else {
-                                  score -= (int) ((1.0 - probability) * 130.0);
+                                  int letPenalty = remainingCounts[lastPlayer] <= 2
+                                          ? (difficulty >= MASTER ? 3_100 : 2_100)
+                                          : (difficulty >= MASTER ? 1_650 : 1_200);
+                                  score -= letPenalty;
                               }
                           }
 
-                          if (difficulty == NORMAL) score += random.nextInt(15);
+                          if (difficulty == NORMAL) score += random.nextInt(17) - 8;
+                          else if (difficulty == HARD) score += random.nextInt(5) - 2;
                           play.score = score;
-                          if (score > bestScore) { bestScore = score; best = play; }
+                          if (score > bestScore) {
+                              bestScore = score;
+                              best = play;
+                          }
                       }
 
-                      if (teammateLed && best != null && table != null && !best.cards.isEmpty()) {
-                          if (remainingCounts[lastPlayer] <= 3 && best.cards.size() < hand.size()) return null;
-                          if (best.combo.mainRank >= 14 && enemyRemain > 2 && best.cards.size() < hand.size()) return null;
+                      if (best == null) best = legal.get(0);
+                      if (teammateLed && table != null) {
+                          ArrayList<Card> afterBest = new ArrayList<>(hand);
+                          removeCards(afterBest, best.cards);
+                          if (afterBest.isEmpty()) return best;
+
+                          double bestRisk = responseRisk.getOrDefault(comboSignature(best.combo), 0.5);
+                          double emergencyThreshold = difficulty >= MASTER ? 0.27
+                                  : difficulty == HARD ? 0.31 : 0.36;
+                          double improvementMargin = difficulty >= MASTER ? 0.035
+                                  : difficulty == HARD ? 0.05 : 0.07;
+                          boolean emergency = enemyRemain <= 2
+                                  && teammateTableRisk >= emergencyThreshold
+                                  && bestRisk + improvementMargin < teammateTableRisk;
+                          if (remainingCounts[lastPlayer] <= (difficulty >= HARD ? 3 : 2)
+                                  && enemyRemain > 1) return null;
+                          if (!emergency) return null;
+                          if ((best.combo.type == Combo.BOMB || best.combo.type == Combo.ROCKET)
+                                  && enemyRemain > 1
+                                  && teammateTableRisk < (difficulty >= MASTER ? 0.82 : 0.72)) {
+                              return null;
+                          }
                       }
-                      return best != null ? best : legal.get(0);
+                      return best;
                   }
 
+                  private Play choosePerfectInfoPlay(int player, List<Card>[] sourceHands,
+                                                     Combo table, int lastPlayer, int passCount,
+                                                     int landlord, long deadlineNanos) {
+                      @SuppressWarnings("unchecked")
+                      ArrayList<Card>[] searchHands = new ArrayList[]{
+                              new ArrayList<>(sourceHands[0]),
+                              new ArrayList<>(sourceHands[1]),
+                              new ArrayList<>(sourceHands[2])
+                      };
+                      for (ArrayList<Card> cards : searchHands) cards.sort(CARD_COMPARATOR);
+          
+                      ArrayList<Play> legal = DoudizhuRules.generateLegalPlays(searchHands[player], table, 1_800);
+                      if (legal.isEmpty()) return null;
+                      orderPerfectRootPlays(legal, searchHands[player], player, landlord, table, lastPlayer);
+          
+                      Play completedBest = legal.get(0);
+                      int quickBest = Integer.MIN_VALUE;
+                      for (Play play : legal) {
+                          int quick = perfectRootHeuristic(play, searchHands[player], player,
+                                  landlord, table, lastPlayer);
+                          if (quick > quickBest) {
+                              quickBest = quick;
+                              completedBest = play;
+                          }
+                      }
+          
+                      int totalCards = totalCards(searchHands);
+                      int maxDepth = totalCards <= 18 ? 64
+                              : totalCards <= 26 ? 24
+                              : totalCards <= 38 ? 14 : 10;
+                      perfectTt.clear();
+          
+                      for (int depth = 2; depth <= maxDepth && System.nanoTime() < deadlineNanos; depth++) {
+                          perfectTimedOut = false;
+                          Play iterationBest = null;
+                          int iterationBestScore = Integer.MIN_VALUE;
+                          int alpha = -PERFECT_WIN - 100;
+                          int beta = PERFECT_WIN + 100;
+          
+                          for (Play play : legal) {
+                              if (System.nanoTime() >= deadlineNanos) {
+                                  perfectTimedOut = true;
+                                  break;
+                              }
+                              ArrayList<Card> actingHand = searchHands[player];
+                              removeCards(actingHand, play.cards);
+                              int score;
+                              try {
+                                  if (actingHand.isEmpty()) {
+                                      score = PERFECT_WIN;
+                                  } else {
+                                      score = perfectSearch(searchHands, (player + 1) % 3,
+                                              play.combo, player, 0, landlord, player,
+                                              depth - 1, alpha, beta, 1, deadlineNanos);
+                                  }
+                              } finally {
+                                  actingHand.addAll(play.cards);
+                                  actingHand.sort(CARD_COMPARATOR);
+                              }
+                              if (perfectTimedOut) break;
+                              if (score > iterationBestScore) {
+                                  iterationBestScore = score;
+                                  iterationBest = play;
+                              }
+                              alpha = Math.max(alpha, iterationBestScore);
+                              if (iterationBestScore >= PERFECT_WIN - 50) break;
+                          }
+          
+                          if (!perfectTimedOut && table != null) {
+                              int nextPass = passCount + 1;
+                              int nextTurn;
+                              Combo nextTable = table;
+                              int nextPassCount = nextPass;
+                              if (nextPass >= 2) {
+                                  nextTurn = lastPlayer;
+                                  nextTable = null;
+                                  nextPassCount = 0;
+                              } else {
+                                  nextTurn = (player + 1) % 3;
+                              }
+                              int passScore = perfectSearch(searchHands, nextTurn, nextTable,
+                                      lastPlayer, nextPassCount, landlord, player,
+                                      depth - 1, alpha, beta, 1, deadlineNanos);
+                              if (!perfectTimedOut && passScore > iterationBestScore) {
+                                  iterationBestScore = passScore;
+                                  iterationBest = null;
+                              }
+                          }
+          
+                          if (perfectTimedOut) break;
+                          completedBest = iterationBest;
+                          if (Math.abs(iterationBestScore) >= PERFECT_WIN - 50) break;
+                          if (perfectTt.size() > 220_000) perfectTt.clear();
+                      }
+                      return completedBest;
+                  }
+          
+                  private int perfectSearch(ArrayList<Card>[] hands, int currentPlayer,
+                                            Combo table, int lastPlayer, int passCount,
+                                            int landlord, int rootPlayer, int depth,
+                                            int alpha, int beta, int ply, long deadlineNanos) {
+                      if (System.nanoTime() >= deadlineNanos) {
+                          perfectTimedOut = true;
+                          return evaluatePerfectState(hands, currentPlayer, table,
+                                  lastPlayer, landlord, rootPlayer, ply);
+                      }
+          
+                      for (int p = 0; p < 3; p++) {
+                          if (hands[p].isEmpty()) {
+                              return sameTeam(p, rootPlayer, landlord)
+                                      ? PERFECT_WIN - ply : -PERFECT_WIN + ply;
+                          }
+                      }
+                      if (depth <= 0) {
+                          return evaluatePerfectState(hands, currentPlayer, table,
+                                  lastPlayer, landlord, rootPlayer, ply);
+                      }
+          
+                      long key = perfectStateHash(hands, currentPlayer, table, lastPlayer,
+                              passCount, landlord);
+                      int originalAlpha = alpha;
+                      int originalBeta = beta;
+                      SearchEntry cached = perfectTt.get(key);
+                      if (cached != null && cached.depth >= depth) {
+                          if (cached.flag == TT_EXACT) return cached.value;
+                          if (cached.flag == TT_LOWER) alpha = Math.max(alpha, cached.value);
+                          else if (cached.flag == TT_UPPER) beta = Math.min(beta, cached.value);
+                          if (alpha >= beta) return cached.value;
+                      }
+          
+                      int total = totalCards(hands);
+                      int generationLimit = total <= 18 ? 900
+                              : total <= 26 ? (table == null ? 240 : 420)
+                              : (table == null ? 150 : 280);
+                      ArrayList<Play> legal = DoudizhuRules.generateLegalPlays(
+                              hands[currentPlayer], table, generationLimit);
+                      boolean maximizing = sameTeam(currentPlayer, rootPlayer, landlord);
+                      orderPerfectSearchPlays(legal, hands[currentPlayer], currentPlayer,
+                              landlord, rootPlayer, table, lastPlayer, maximizing);
+          
+                      int keep = total <= 18 ? legal.size()
+                              : total <= 26 ? (table == null ? 96 : 160)
+                              : (table == null ? 64 : 120);
+                      if (legal.size() > keep) legal = new ArrayList<>(legal.subList(0, keep));
+          
+                      int best = maximizing ? -PERFECT_WIN - 200 : PERFECT_WIN + 200;
+                      boolean explored = false;
+                      for (Play play : legal) {
+                          if (System.nanoTime() >= deadlineNanos) {
+                              perfectTimedOut = true;
+                              break;
+                          }
+                          explored = true;
+                          ArrayList<Card> actingHand = hands[currentPlayer];
+                          removeCards(actingHand, play.cards);
+                          int value;
+                          try {
+                              if (actingHand.isEmpty()) {
+                                  value = sameTeam(currentPlayer, rootPlayer, landlord)
+                                          ? PERFECT_WIN - ply : -PERFECT_WIN + ply;
+                              } else {
+                                  value = perfectSearch(hands, (currentPlayer + 1) % 3,
+                                          play.combo, currentPlayer, 0, landlord, rootPlayer,
+                                          depth - 1, alpha, beta, ply + 1, deadlineNanos);
+                              }
+                          } finally {
+                              actingHand.addAll(play.cards);
+                              actingHand.sort(CARD_COMPARATOR);
+                          }
+                          if (perfectTimedOut) break;
+          
+                          if (maximizing) {
+                              if (value > best) best = value;
+                              if (best > alpha) alpha = best;
+                          } else {
+                              if (value < best) best = value;
+                              if (best < beta) beta = best;
+                          }
+                          if (alpha >= beta) break;
+                      }
+          
+                      if (!perfectTimedOut && table != null) {
+                          explored = true;
+                          int nextPass = passCount + 1;
+                          int nextTurn;
+                          Combo nextTable = table;
+                          int nextPassCount = nextPass;
+                          if (nextPass >= 2) {
+                              nextTurn = lastPlayer;
+                              nextTable = null;
+                              nextPassCount = 0;
+                          } else {
+                              nextTurn = (currentPlayer + 1) % 3;
+                          }
+                          int value = perfectSearch(hands, nextTurn, nextTable, lastPlayer,
+                                  nextPassCount, landlord, rootPlayer, depth - 1,
+                                  alpha, beta, ply + 1, deadlineNanos);
+                          if (!perfectTimedOut) {
+                              if (maximizing) {
+                                  if (value > best) best = value;
+                                  if (best > alpha) alpha = best;
+                              } else {
+                                  if (value < best) best = value;
+                                  if (best < beta) beta = best;
+                              }
+                          }
+                      }
+          
+                      if (!explored || perfectTimedOut) {
+                          return evaluatePerfectState(hands, currentPlayer, table,
+                                  lastPlayer, landlord, rootPlayer, ply);
+                      }
+          
+                      byte flag = best <= originalAlpha ? TT_UPPER
+                              : best >= originalBeta ? TT_LOWER : TT_EXACT;
+                      perfectTt.put(key, new SearchEntry(depth, best, flag));
+                      return best;
+                  }
+          
+                  private int evaluatePerfectState(ArrayList<Card>[] hands, int currentPlayer,
+                                                   Combo table, int lastPlayer, int landlord,
+                                                   int rootPlayer, int ply) {
+                      for (int p = 0; p < 3; p++) {
+                          if (hands[p].isEmpty()) {
+                              return sameTeam(p, rootPlayer, landlord)
+                                      ? PERFECT_WIN - ply : -PERFECT_WIN + ply;
+                          }
+                      }
+                      int farmerA = (landlord + 1) % 3;
+                      int farmerB = (landlord + 2) % 3;
+                      int landlordTurns = estimateTurns(hands[landlord]);
+                      int farmerTurns = Math.min(estimateTurns(hands[farmerA]),
+                              estimateTurns(hands[farmerB]));
+                      int farmerCards = Math.min(hands[farmerA].size(), hands[farmerB].size());
+                      int landlordCards = hands[landlord].size();
+          
+                      int landlordView = (farmerTurns - landlordTurns) * 360
+                              + (farmerCards - landlordCards) * 21;
+                      int landlordControl = controlPotential(hands[landlord]);
+                      int farmerControl = Math.max(controlPotential(hands[farmerA]),
+                              controlPotential(hands[farmerB]));
+                      landlordView += (landlordControl - farmerControl) * 3 / 2;
+                      if (farmerCards <= 2) landlordView -= (3 - farmerCards) * 190;
+                      if (landlordCards <= 2) landlordView += (3 - landlordCards) * 215;
+                      landlordView += currentPlayer == landlord ? 48 : -48;
+                      if (lastPlayer >= 0) landlordView += lastPlayer == landlord ? 68 : -68;
+                      if (table != null) {
+                          boolean canRespond = canBeat(hands[currentPlayer], table);
+                          if (canRespond) landlordView += currentPlayer == landlord ? 88 : -88;
+                          else landlordView += currentPlayer == landlord ? -105 : 105;
+                          if (table.type == Combo.BOMB || table.type == Combo.ROCKET) {
+                              landlordView += lastPlayer == landlord ? 52 : -52;
+                          }
+                      }
+                      if (hands[farmerA].size() <= 2 || hands[farmerB].size() <= 2) {
+                          landlordView -= 95;
+                      }
+                      return rootPlayer == landlord ? landlordView : -landlordView;
+                  }
+          
+                  private void orderPerfectRootPlays(ArrayList<Play> plays, List<Card> hand,
+                                                     int player, int landlord, Combo table,
+                                                     int lastPlayer) {
+                      plays.sort((a, b) -> Integer.compare(
+                              perfectRootHeuristic(b, hand, player, landlord, table, lastPlayer),
+                              perfectRootHeuristic(a, hand, player, landlord, table, lastPlayer)));
+                  }
+          
+                  private int perfectRootHeuristic(Play play, List<Card> hand, int player,
+                                                   int landlord, Combo table, int lastPlayer) {
+                      ArrayList<Card> remain = new ArrayList<>(hand);
+                      removeCards(remain, play.cards);
+                      if (remain.isEmpty()) return PERFECT_WIN;
+                      int score = -estimateTurns(remain) * 230 + structureScore(remain)
+                              + play.cards.size() * 10 - controlCost(play);
+                      if (isSequence(play.combo)) score += 95;
+                      if (play.combo.type == Combo.BOMB) score -= 180;
+                      if (play.combo.type == Combo.ROCKET) score -= 280;
+                      boolean teammateLed = player != landlord && lastPlayer >= 0
+                              && lastPlayer != landlord && lastPlayer != player;
+                      if (teammateLed && table != null) score -= 520;
+                      return score;
+                  }
+          
+                  private void orderPerfectSearchPlays(ArrayList<Play> plays, List<Card> hand,
+                                                       int player, int landlord, int rootPlayer,
+                                                       Combo table, int lastPlayer,
+                                                       boolean maximizing) {
+                      plays.sort((a, b) -> {
+                          int sa = perfectSearchOrderScore(a, hand, player, landlord,
+                                  rootPlayer, table, lastPlayer);
+                          int sb = perfectSearchOrderScore(b, hand, player, landlord,
+                                  rootPlayer, table, lastPlayer);
+                          return maximizing ? Integer.compare(sb, sa) : Integer.compare(sa, sb);
+                      });
+                  }
+          
+                  private int perfectSearchOrderScore(Play play, List<Card> hand,
+                                                      int player, int landlord, int rootPlayer,
+                                                      Combo table, int lastPlayer) {
+                      int local = perfectRootHeuristic(play, hand, player, landlord, table, lastPlayer);
+                      return sameTeam(player, rootPlayer, landlord) ? local : -local;
+                  }
+          
+                  private boolean sameTeam(int a, int b, int landlord) {
+                      return (a == landlord) == (b == landlord);
+                  }
+          
+                  private int totalCards(List<Card>[] hands) {
+                      return hands[0].size() + hands[1].size() + hands[2].size();
+                  }
+          
+                  private long perfectStateHash(List<Card>[] hands, int currentPlayer,
+                                                Combo table, int lastPlayer, int passCount,
+                                                int landlord) {
+                      long hash = 0x9E3779B97F4A7C15L;
+                      for (int p = 0; p < 3; p++) {
+                          for (Card card : hands[p]) {
+                              long value = 1L + card.id + p * 64L;
+                              hash ^= mix64(value * 0xD6E8FEB86659FD93L);
+                          }
+                      }
+                      long meta = currentPlayer | ((long) (lastPlayer + 1) << 3)
+                              | ((long) passCount << 6) | ((long) landlord << 8);
+                      if (table != null) {
+                          meta |= ((long) (table.type + 1) << 12)
+                                  | ((long) table.mainRank << 18)
+                                  | ((long) table.cardCount << 23)
+                                  | ((long) table.serialLength << 29);
+                      }
+                      return hash ^ mix64(meta + 0xA0761D6478BD642FL);
+                  }
+          
+                  private long mix64(long z) {
+                      z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+                      z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+                      return z ^ (z >>> 31);
+                  }
+          
                   Play chooseHint(List<Card> hand, Combo table) {
-                      ArrayList<Play> legal = DoudizhuRules.generateLegalPlays(hand, table, 320);
+                      ArrayList<Play> legal = DoudizhuRules.generateLegalPlays(hand, table, 420);
                       if (legal.isEmpty()) return null;
                       Play best = null;
                       int bestScore = Integer.MIN_VALUE;
                       for (Play p : legal) {
                           ArrayList<Card> remain = new ArrayList<>(hand);
                           removeCards(remain, p.cards);
-                          int score = -estimateTurns(remain) * 150 - p.combo.mainRank * 2 + p.cards.size() * 6;
+                          int score = -estimateTurns(remain) * 165 + structureScore(remain)
+                                  - p.combo.mainRank * 2 + p.cards.size() * 7;
                           if (remain.isEmpty()) score += 999_999;
                           if (p.combo.type == Combo.BOMB || p.combo.type == Combo.ROCKET) score -= 250;
                           if (score > bestScore) { bestScore = score; best = p; }
                       }
                       return best;
                   }
-
-                  private Map<String, Double> estimateBeatProbabilities(int player, List<Card> hand,
-                                                                         List<Play> plays, int[] remainingCounts,
-                                                                         List<Card> played, int samples,
-                                                                         long deadlineNanos) {
+          
+                  private Map<String, Double> estimateRelevantResponseRisk(int player, List<Card> hand,
+                                                                            List<Play> plays,
+                                                                            int[] remainingCounts,
+                                                                            List<Card> played,
+                                                                            List<Card> visibleBottom,
+                                                                            int landlord,
+                                                                            int samples,
+                                                                            long deadlineNanos) {
                       HashMap<String, Integer> beat = new HashMap<>();
                       HashMap<String, Integer> total = new HashMap<>();
                       ArrayList<Card> unknown = fullDeck();
                       removeCardsById(unknown, hand);
                       removeCardsById(unknown, played);
+          
+                      @SuppressWarnings("unchecked")
+                      ArrayList<Card>[] knownOpponentCards = new ArrayList[]{new ArrayList<>(), new ArrayList<>(), new ArrayList<>()};
+                      if (landlord != player && visibleBottom != null) {
+                          for (Card bottom : visibleBottom) {
+                              if (!containsCardId(played, bottom.id) && !containsCardId(hand, bottom.id)) {
+                                  knownOpponentCards[landlord].add(bottom);
+                              }
+                          }
+                          removeCardsById(unknown, knownOpponentCards[landlord]);
+                      }
+          
                       int leftId = (player + 1) % 3;
                       int rightId = (player + 2) % 3;
-                      int leftCount = remainingCounts[leftId];
-                      int rightCount = remainingCounts[rightId];
-                      int possible = Math.min(unknown.size(), leftCount + rightCount);
-                      if (possible <= 0) return Collections.emptyMap();
-
+                      int leftNeed = Math.max(0, remainingCounts[leftId] - knownOpponentCards[leftId].size());
+                      int rightNeed = Math.max(0, remainingCounts[rightId] - knownOpponentCards[rightId].size());
+                      if (leftNeed + rightNeed > unknown.size()) return Collections.emptyMap();
+          
+                      ArrayList<Combo> uniqueCombos = new ArrayList<>();
+                      HashSet<String> uniqueKeys = new HashSet<>();
+                      for (Play p : plays) {
+                          String key = comboSignature(p.combo);
+                          if (uniqueKeys.add(key)) uniqueCombos.add(p.combo);
+                      }
+          
                       for (int s = 0; s < samples && System.nanoTime() < deadlineNanos; s++) {
                           Collections.shuffle(unknown, random);
-                          ArrayList<Card> left = new ArrayList<>(unknown.subList(0, Math.min(leftCount, unknown.size())));
-                          int from = Math.min(leftCount, unknown.size());
-                          int to = Math.min(from + rightCount, unknown.size());
-                          ArrayList<Card> right = new ArrayList<>(unknown.subList(from, to));
-                          for (Play p : plays) {
-                              String key = signature(p);
-                              boolean can = canBeat(left, p.combo) || canBeat(right, p.combo);
+                          ArrayList<Card> left = new ArrayList<>(knownOpponentCards[leftId]);
+                          ArrayList<Card> right = new ArrayList<>(knownOpponentCards[rightId]);
+                          left.addAll(unknown.subList(0, leftNeed));
+                          right.addAll(unknown.subList(leftNeed, leftNeed + rightNeed));
+          
+                          for (Combo combo : uniqueCombos) {
+                              String key = comboSignature(combo);
+                              boolean canRespond;
+                              if (player == landlord) {
+                                  canRespond = canBeat(left, combo) || canBeat(right, combo);
+                              } else {
+                                  List<Card> landlordHand = landlord == leftId ? left : right;
+                                  canRespond = canBeat(landlordHand, combo);
+                              }
                               total.put(key, total.getOrDefault(key, 0) + 1);
-                              if (can) beat.put(key, beat.getOrDefault(key, 0) + 1);
+                              if (canRespond) beat.put(key, beat.getOrDefault(key, 0) + 1);
                           }
                       }
+          
                       HashMap<String, Double> result = new HashMap<>();
                       for (Map.Entry<String, Integer> e : total.entrySet()) {
                           int t = e.getValue();
@@ -3473,8 +4016,7 @@ jobs:
                       }
                       return result;
                   }
-
-
+          
                   private boolean canBeat(List<Card> hand, Combo table) {
                       int[] counts = countRanks(hand);
                       if (counts[16] > 0 && counts[17] > 0 && table.type != Combo.ROCKET) return true;
@@ -3494,8 +4036,7 @@ jobs:
                               return false;
                           case Combo.TRIO_SINGLE:
                               for (int r = table.mainRank + 1; r <= 15; r++) if (counts[r] >= 3) {
-                                  int other = hand.size() - counts[r];
-                                  if (other >= 1) return true;
+                                  if (hand.size() - counts[r] >= 1) return true;
                               }
                               return false;
                           case Combo.TRIO_PAIR:
@@ -3544,7 +4085,7 @@ jobs:
                               return false;
                       }
                   }
-
+          
                   private boolean hasSerial(int[] counts, int copies, int length, int minMainExclusive) {
                       for (int end = minMainExclusive + 1; end <= 14; end++) {
                           int start = end - length + 1;
@@ -3555,15 +4096,17 @@ jobs:
                       }
                       return false;
                   }
-
+          
                   private int estimateTurns(List<Card> cards) {
                       if (cards.isEmpty()) return 0;
                       int[] counts = countRanks(cards);
                       int best = greedyTurns(counts, true);
                       best = Math.min(best, greedyTurns(counts, false));
+                      best = Math.min(best, attachmentAwareTurns(counts, true));
+                      best = Math.min(best, attachmentAwareTurns(counts, false));
                       return best;
                   }
-
+          
                   private int greedyTurns(int[] original, boolean preferSequences) {
                       int[] c = original.clone();
                       int turns = 0;
@@ -3590,7 +4133,89 @@ jobs:
                       turns += pairs + singles;
                       return Math.max(1, turns);
                   }
-
+          
+                  private int attachmentAwareTurns(int[] original, boolean sequenceFirst) {
+                      int[] c = original.clone();
+                      int turns = 0;
+                      if (c[16] > 0 && c[17] > 0) { c[16]--; c[17]--; turns++; }
+                      if (sequenceFirst) {
+                          turns += removePairStraights(c);
+                          turns += removeStraights(c);
+                      }
+                      turns += removeAirplanesWithWings(c);
+                      if (!sequenceFirst) {
+                          turns += removePairStraights(c);
+                          turns += removeStraights(c);
+                      }
+                      for (int r = 3; r <= 15; r++) if (c[r] == 4) { c[r] = 0; turns++; }
+          
+                      for (int r = 3; r <= 15; r++) {
+                          if (c[r] < 3) continue;
+                          c[r] -= 3;
+                          turns++;
+                          int pairRank = findLowPair(c, r);
+                          if (pairRank >= 0) c[pairRank] -= 2;
+                          else {
+                              int singleRank = findLowSingle(c, r);
+                              if (singleRank >= 0) c[singleRank]--;
+                          }
+                      }
+                      for (int r = 3; r <= 17; r++) {
+                          turns += c[r] / 2;
+                          turns += c[r] % 2;
+                      }
+                      return Math.max(1, turns);
+                  }
+          
+                  private int removeAirplanesWithWings(int[] c) {
+                      int turns = 0;
+                      while (true) {
+                          int bestStart = -1, bestLen = 0;
+                          for (int start = 3; start <= 13; start++) {
+                              int len = 0;
+                              while (start + len <= 14 && c[start + len] >= 3) len++;
+                              if (len >= 2 && len > bestLen) { bestStart = start; bestLen = len; }
+                          }
+                          if (bestStart < 0) break;
+                          for (int r = bestStart; r < bestStart + bestLen; r++) c[r] -= 3;
+                          turns++;
+          
+                          ArrayList<Integer> pairs = new ArrayList<>();
+                          for (int r = 3; r <= 15; r++) {
+                              if (r < bestStart || r >= bestStart + bestLen) {
+                                  if (c[r] >= 2) pairs.add(r);
+                              }
+                          }
+                          if (pairs.size() >= bestLen) {
+                              for (int i = 0; i < bestLen; i++) c[pairs.get(i)] -= 2;
+                          } else {
+                              int need = bestLen;
+                              for (int r = 3; r <= 17 && need > 0; r++) {
+                                  if (r >= bestStart && r < bestStart + bestLen) continue;
+                                  while (c[r] > 0 && need > 0) { c[r]--; need--; }
+                              }
+                          }
+                      }
+                      return turns;
+                  }
+          
+                  private int findLowPair(int[] c, int excludedRank) {
+                      for (int r = 3; r <= 15; r++) {
+                          if (r != excludedRank && c[r] == 2) return r;
+                      }
+                      return -1;
+                  }
+          
+                  private int findLowSingle(int[] c, int excludedRank) {
+                      for (int r = 3; r <= 17; r++) {
+                          if (r != excludedRank && c[r] == 1) return r;
+                      }
+                      for (int r = 3; r <= 17; r++) {
+                          if (r != excludedRank && c[r] > 0) return r;
+                      }
+                      return -1;
+                  }
+          
                   private int removeStraights(int[] c) {
                       int turns = 0;
                       boolean changed;
@@ -3609,7 +4234,7 @@ jobs:
                       } while (changed);
                       return turns;
                   }
-
+          
                   private int removePairStraights(int[] c) {
                       int turns = 0;
                       boolean changed;
@@ -3628,7 +4253,7 @@ jobs:
                       } while (changed);
                       return turns;
                   }
-
+          
                   private int removeAirplanes(int[] c) {
                       int turns = 0;
                       boolean changed;
@@ -3647,7 +4272,57 @@ jobs:
                       } while (changed);
                       return turns;
                   }
+          
+                  private int structureScore(List<Card> cards) {
+                      int[] c = countRanks(cards);
+                      int score = 0;
+                      int singles = 0;
+                      for (int r = 3; r <= 17; r++) {
+                          if (c[r] == 1) singles++;
+                          if (c[r] == 2) score += 5;
+                          if (c[r] == 3) score += 13;
+                          if (c[r] == 4) score += 42;
+                      }
+                      if (c[16] > 0 && c[17] > 0) score += 72;
+                      score -= singles * 9;
+                      return score;
+                  }
+          
+                  private int splitStructurePenalty(List<Card> hand, Play play) {
+                      int[] before = countRanks(hand);
+                      int[] used = countRanks(play.cards);
+                      int penalty = 0;
+                      for (int r = 3; r <= 15; r++) {
+                          if (used[r] == 0 || used[r] == before[r]) continue;
+                          if (before[r] == 4) penalty += used[r] * 34;
+                          else if (before[r] == 3) penalty += used[r] * 20;
+                          else if (before[r] == 2 && used[r] == 1) penalty += 13;
+                      }
+                      if (before[16] > 0 && before[17] > 0
+                              && used[16] + used[17] == 1) penalty += 58;
+                      if (isSequence(play.combo)) penalty = penalty * 2 / 3;
+                      return penalty;
+                  }
 
+                  private int controlPotential(List<Card> cards) {
+                      int[] counts = countRanks(cards);
+                      int score = counts[17] * 34 + counts[16] * 27
+                              + counts[15] * 18 + counts[14] * 8;
+                      for (int r = 3; r <= 15; r++) {
+                          if (counts[r] == 4) score += 52 + r;
+                          else if (counts[r] == 3 && r >= 12) score += 10;
+                          else if (counts[r] == 2 && r >= 14) score += 7;
+                      }
+                      if (counts[16] > 0 && counts[17] > 0) score += 72;
+                      return score;
+                  }
+
+                  private boolean isSequence(Combo combo) {
+                      return combo.type == Combo.STRAIGHT || combo.type == Combo.PAIR_STRAIGHT
+                              || combo.type == Combo.AIRPLANE || combo.type == Combo.AIRPLANE_SINGLE
+                              || combo.type == Combo.AIRPLANE_PAIR;
+                  }
+          
                   private int controlCost(Play play) {
                       int cost = play.combo.mainRank * 2;
                       if (play.combo.mainRank >= 15) cost += 45;
@@ -3655,25 +4330,27 @@ jobs:
                       if (play.combo.type == Combo.ROCKET) cost += 200;
                       return cost;
                   }
-
+          
                   private int nextOpponentWithFewest(int player, int[] remains) {
                       int a = (player + 1) % 3, b = (player + 2) % 3;
                       return remains[a] <= remains[b] ? a : b;
                   }
-
+          
                   private static int[] countRanks(List<Card> cards) {
                       int[] counts = new int[18];
                       for (Card c : cards) counts[c.rank]++;
                       return counts;
                   }
-
-                  private static String signature(Play p) {
-                      StringBuilder sb = new StringBuilder();
-                      sb.append(p.combo.type).append(':').append(p.combo.mainRank).append(':');
-                      for (Card c : p.cards) sb.append(c.rank).append(',');
-                      return sb.toString();
+          
+                  private static String comboSignature(Combo combo) {
+                      return combo.type + ":" + combo.mainRank + ":" + combo.cardCount + ":" + combo.serialLength;
                   }
-
+          
+                  private static boolean containsCardId(List<Card> cards, int id) {
+                      for (Card c : cards) if (c.id == id) return true;
+                      return false;
+                  }
+          
                   private static ArrayList<Card> fullDeck() {
                       ArrayList<Card> deck = new ArrayList<>(54);
                       int id = 0;
@@ -3684,7 +4361,7 @@ jobs:
                       deck.add(new Card(id, 17, 5));
                       return deck;
                   }
-
+          
                   private static void removeCards(List<Card> target, List<Card> cards) {
                       for (Card c : cards) {
                           for (int i = 0; i < target.size(); i++) {
@@ -3692,18 +4369,18 @@ jobs:
                           }
                       }
                   }
-
+          
                   private static void removeCardsById(List<Card> target, List<Card> cards) {
                       removeCards(target, cards);
                   }
               }
-
+          
               final class PokerView extends View {
                   private static final int STATE_MENU = 0;
                   private static final int STATE_BIDDING = 1;
                   private static final int STATE_PLAYING = 2;
                   private static final int STATE_GAME_OVER = 3;
-
+          
                   private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
                   private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
                   private final Random random = new Random();
@@ -3711,7 +4388,7 @@ jobs:
                   private final ExecutorService executor = Executors.newSingleThreadExecutor();
                   private final Handler handler = new Handler(Looper.getMainLooper());
                   private final AtomicInteger aiToken = new AtomicInteger();
-
+          
                   @SuppressWarnings("unchecked")
                   private final ArrayList<Card>[] hands = new ArrayList[]{new ArrayList<>(), new ArrayList<>(), new ArrayList<>()};
                   private final ArrayList<Card> bottomCards = new ArrayList<>();
@@ -3719,7 +4396,8 @@ jobs:
                   private final ArrayList<Card> playedCards = new ArrayList<>();
                   private final ArrayList<RectF> humanCardRects = new ArrayList<>();
                   private final ArrayList<Card> humanRectCards = new ArrayList<>();
-
+                  private final HashSet<Integer> hintedCardIds = new HashSet<>();
+          
                   private int state = STATE_MENU;
                   private int difficulty = AiEngine.NORMAL;
                   private int landlord = -1;
@@ -3733,10 +4411,11 @@ jobs:
                   private Combo tableCombo;
                   private String message = "请选择难度开始游戏";
                   private boolean aiThinking = false;
-                  private boolean showCounter = true;
+                  private boolean showCounter = false;
+                  private boolean hintSelectionActive = false;
                   private long comboShowUntil = 0L;
                   private String comboShowText = "";
-
+          
                   private float width, height, density;
                   private float cardW, cardH, handTop;
                   private RectF playBtn = new RectF();
@@ -3745,9 +4424,11 @@ jobs:
                   private RectF counterBtn = new RectF();
                   private RectF backBtn = new RectF();
                   private final RectF[] bidBtns = {new RectF(), new RectF(), new RectF(), new RectF()};
-                  private final RectF[] menuBtns = {new RectF(), new RectF(), new RectF(), new RectF()};
+                  private final RectF[] menuBtns = {
+                          new RectF(), new RectF(), new RectF(), new RectF()
+                  };
                   private RectF rulesBtn = new RectF();
-
+          
                   PokerView(Context context) {
                       super(context);
                       density = getResources().getDisplayMetrics().density;
@@ -3756,13 +4437,13 @@ jobs:
                       stroke.setStrokeWidth(dp(2));
                       setLayerType(View.LAYER_TYPE_SOFTWARE, null);
                   }
-
+          
                   void shutdown() {
                       aiToken.incrementAndGet();
                       handler.removeCallbacksAndMessages(null);
                       executor.shutdownNow();
                   }
-
+          
                   @Override
                   protected void onDraw(Canvas canvas) {
                       super.onDraw(canvas);
@@ -3774,7 +4455,7 @@ jobs:
                       if (state == STATE_MENU) drawMenu(canvas);
                       else drawGame(canvas);
                   }
-
+          
                   private void drawTableBackground(Canvas canvas) {
                       LinearGradient gradient = new LinearGradient(0, 0, 0, height,
                               0xFF176C54, 0xFF083E35, Shader.TileMode.CLAMP);
@@ -3794,27 +4475,44 @@ jobs:
                               dp(22), dp(22), paint);
                       paint.setStyle(Paint.Style.FILL);
                   }
-
+          
                   private void drawMenu(Canvas canvas) {
-                      drawCenteredText(canvas, "欢乐斗地主 · 本地智能版", width / 2f, height * 0.19f,
-                              height * 0.072f, 0xFFFFE6A0, true);
-                      drawCenteredText(canvas, "四档 AI · 标准牌型 · 记牌器 · 全程离线", width / 2f,
-                              height * 0.28f, height * 0.036f, 0xFFE9FFF7, false);
+                      drawCenteredText(canvas, "棋牌三合一 · 欢乐斗地主", width / 2f, height * 0.19f,
+                              height * 0.070f, 0xFFFFE6A0, true);
+                      drawCenteredText(canvas, "普通 · 困难 · 大师 · 透视全知 · 全程离线", width / 2f,
+                              height * 0.28f, height * 0.034f, 0xFFE9FFF7, false);
 
                       float bw = width * 0.18f, bh = height * 0.105f;
                       float gap = width * 0.025f;
                       float total = bw * 4 + gap * 3;
                       float sx = (width - total) / 2f;
                       float y = height * 0.43f;
-                      String[] names = {"简单", "普通", "困难", "大师"};
-                      int[] colors = {0xFF7CCF86, 0xFF65B5E8, 0xFFF3B84B, 0xFFE76D54};
+                      String[] names = {"普通", "困难", "大师", "透视"};
+                      int[] colors = {0xFF65B5E8, 0xFFF3B84B, 0xFFE88A54, 0xFFE34E57};
                       for (int i = 0; i < 4; i++) {
-                          menuBtns[i].set(sx + i * (bw + gap), y, sx + i * (bw + gap) + bw, y + bh);
+                          menuBtns[i].set(sx + i * (bw + gap), y,
+                                  sx + i * (bw + gap) + bw, y + bh);
                           drawButton(canvas, menuBtns[i], names[i], colors[i], Color.WHITE,
-                                  height * 0.038f, difficulty == i);
+                                  height * 0.036f, difficulty == i);
                       }
-                      RectF start = new RectF(width * 0.36f, height * 0.62f,
-                              width * 0.64f, height * 0.74f);
+
+                      String detail;
+                      int detailColor = 0xFFD7EEE8;
+                      if (difficulty == AiEngine.HARD) {
+                          detail = "困难：扩大未知牌抽样，强化控牌、拆牌保护和农民配合";
+                      } else if (difficulty == AiEngine.MASTER) {
+                          detail = "大师：高密度概率推演，残局封锁和队友让牌判断更严格";
+                      } else if (difficulty == AiEngine.OMNISCIENT) {
+                          detail = "透视：读取三家暗牌，以联盟极大极小搜索推演真实后续";
+                          detailColor = 0xFFFFD3C7;
+                      } else {
+                          detail = "普通：不读取暗牌，根据公开信息、牌型结构与概率推测";
+                      }
+                      drawCenteredText(canvas, detail, width / 2f, height * 0.575f,
+                              height * 0.027f, detailColor, false);
+
+                      RectF start = new RectF(width * 0.36f, height * 0.65f,
+                              width * 0.64f, height * 0.77f);
                       drawButton(canvas, start, "开始斗地主", 0xFFFFC43D, 0xFF332300,
                               height * 0.045f, false);
                       rulesBtn.set(width * 0.82f, height * 0.05f, width * 0.96f, height * 0.13f);
@@ -3824,7 +4522,7 @@ jobs:
                       drawButton(canvas, backBtn, "返回", 0x884B6B62, Color.WHITE,
                               height * 0.029f, false);
                       drawCenteredText(canvas, "进入后保持横屏；竖屏空间不足，无法正常操作。", width / 2f,
-                              height * 0.86f, height * 0.031f, 0xFFD7EEE8, false);
+                              height * 0.88f, height * 0.031f, 0xFFD7EEE8, false);
                   }
 
                   private void drawGame(Canvas canvas) {
@@ -3842,28 +4540,32 @@ jobs:
                           postInvalidateDelayed(60L);
                       }
                   }
-
+          
                   private void drawTopBar(Canvas canvas) {
                       RectF panel = new RectF(width * 0.29f, height * 0.025f,
                               width * 0.71f, height * 0.105f);
                       paint.setColor(0x66000000);
                       canvas.drawRoundRect(panel, dp(14), dp(14), paint);
-                      String diff = new String[]{"简单", "普通", "困难", "大师"}[difficulty];
+                      String diff = new String[]{"普通", "困难", "大师", "透视"}[difficulty];
                       String role = landlord < 0 ? "叫分阶段" : (landlord == 0 ? "你是地主" : "你是农民");
                       drawCenteredText(canvas, "难度：" + diff + "　·　" + role,
                               panel.centerX(), panel.centerY(), height * 0.031f, Color.WHITE, false);
                       backBtn.set(width * 0.015f, height * 0.025f, width * 0.105f, height * 0.105f);
                       drawButton(canvas, backBtn, "退出", 0xAA9D3F3F, Color.WHITE, height * 0.027f, false);
+          
+                      counterBtn.set(width * 0.805f, height * 0.025f, width * 0.885f, height * 0.105f);
+                      drawButton(canvas, counterBtn, showCounter ? "收起记牌" : "记牌",
+                              0x775C8F7A, Color.WHITE, height * 0.023f, false);
                       rulesBtn.set(width * 0.895f, height * 0.025f, width * 0.985f, height * 0.105f);
                       drawButton(canvas, rulesBtn, "说明", 0x884B6B62, Color.WHITE, height * 0.027f, false);
                   }
-
+          
                   private void drawOpponents(Canvas canvas) {
                       float y = height * 0.19f;
                       drawOpponent(canvas, 1, width * 0.15f, y, false);
                       drawOpponent(canvas, 2, width * 0.85f, y, true);
                   }
-
+          
                   private void drawOpponent(Canvas canvas, int player, float cx, float cy, boolean right) {
                       boolean isLandlord = landlord == player;
                       drawCenteredText(canvas, (isLandlord ? "★ " : "") + "AI " + player,
@@ -3882,7 +4584,7 @@ jobs:
                                   cy + smallH * 0.45f, dp(6), paint);
                       }
                   }
-
+          
                   private void drawBottomCards(Canvas canvas) {
                       float smallW = cardW * 0.56f, smallH = cardH * 0.56f;
                       float sx = width / 2f - (smallW * 3 + dp(12) * 2) / 2f;
@@ -3892,7 +4594,7 @@ jobs:
                           else drawCard(canvas, c, sx + i * (smallW + dp(12)), height * 0.12f, smallW, smallH, false);
                       }
                   }
-
+          
                   private void drawTableCards(Canvas canvas) {
                       if (tableCards.isEmpty()) return;
                       float w2 = cardW * 0.78f, h2 = cardH * 0.78f;
@@ -3906,7 +4608,7 @@ jobs:
                       drawCenteredText(canvas, DoudizhuRules.typeName(tableCombo), width / 2f,
                               y + h2 + height * 0.037f, height * 0.027f, 0xFFFFE6A0, false);
                   }
-
+          
                   private void drawHumanHand(Canvas canvas) {
                       humanCardRects.clear();
                       humanRectCards.clear();
@@ -3918,10 +4620,16 @@ jobs:
                       float spacing = n <= 1 ? 0 : Math.min(cardW * 0.50f, (maxSpan - cardW) / (n - 1));
                       float total = cardW + spacing * (n - 1);
                       float sx = width / 2f - total / 2f;
-                      handTop = height - cardH - height * 0.035f;
+                      handTop = height - cardH - height * 0.025f;
+          
+                      float controlsBottom = actionButtonTop() + actionButtonHeight();
+                      float safeGap = height * 0.013f;
+                      float maxSafeLift = Math.max(0f, handTop - controlsBottom - safeGap);
+                      float selectedLift = Math.min(height * 0.035f, maxSafeLift);
+          
                       for (int i = 0; i < n; i++) {
                           Card card = hand.get(i);
-                          float y = handTop - (card.selected ? height * 0.048f : 0f);
+                          float y = handTop - (card.selected ? selectedLift : 0f);
                           RectF rect = drawCard(canvas, card, sx + i * spacing, y, cardW, cardH,
                                   landlord == 0 && state == STATE_PLAYING && currentTurn == 0);
                           humanCardRects.add(rect);
@@ -3932,11 +4640,15 @@ jobs:
                                   height * 0.031f, 0xFFFFD85A, true);
                       }
                   }
-
+          
+                  private float actionButtonTop() { return height * 0.655f; }
+                  private float actionButtonHeight() { return height * 0.070f; }
+          
                   private void drawActionButtons(Canvas canvas) {
-                      float bw = width * 0.105f, bh = height * 0.072f, gap = width * 0.014f;
-                      float y = height * 0.71f;
+                      float bh = actionButtonHeight();
+                      float y = actionButtonTop();
                       if (state == STATE_BIDDING && currentTurn == 0) {
+                          float bw = width * 0.105f, gap = width * 0.014f;
                           float total = bw * 4 + gap * 3;
                           float sx = width / 2f - total / 2f;
                           String[] labels = {"不叫", "1分", "2分", "3分"};
@@ -3950,26 +4662,27 @@ jobs:
                           return;
                       }
                       if (state != STATE_PLAYING || currentTurn != 0) return;
-                      float total = bw * 4 + gap * 3;
+          
+                      float bw = width * 0.112f, gap = width * 0.018f;
+                      float total = bw * 3 + gap * 2;
                       float sx = width / 2f - total / 2f;
                       passBtn.set(sx, y, sx + bw, y + bh);
                       hintBtn.set(sx + bw + gap, y, sx + bw * 2 + gap, y + bh);
                       playBtn.set(sx + (bw + gap) * 2, y, sx + bw * 3 + gap * 2, y + bh);
-                      counterBtn.set(sx + (bw + gap) * 3, y, sx + bw * 4 + gap * 3, y + bh);
                       drawButton(canvas, passBtn, tableCombo == null ? "必须出" : "不出",
                               tableCombo == null ? 0xFF555555 : 0xFF777777, Color.WHITE, height * 0.026f, false);
-                      drawButton(canvas, hintBtn, "提示", 0xFF6FA8DC, Color.WHITE, height * 0.026f, false);
+                      drawButton(canvas, hintBtn, hintSelectionActive ? "取消提示" : "提示",
+                              hintSelectionActive ? 0xFF5689B8 : 0xFF6FA8DC,
+                              Color.WHITE, height * 0.026f, hintSelectionActive);
                       drawButton(canvas, playBtn, "出牌", 0xFFFFC43D, 0xFF332300, height * 0.026f, false);
-                      drawButton(canvas, counterBtn, showCounter ? "隐藏记牌" : "记牌器",
-                              0xFF5C8F7A, Color.WHITE, height * 0.024f, false);
                   }
-
+          
                   private void drawMessage(Canvas canvas) {
                       String text = aiThinking ? message + "（AI思考中）" : message;
-                      drawCenteredText(canvas, text, width / 2f, height * 0.64f,
+                      drawCenteredText(canvas, text, width / 2f, height * 0.592f,
                               height * 0.031f, 0xFFFFF2C8, true);
                   }
-
+          
                   private void drawCounter(Canvas canvas) {
                       int[] remain = new int[18];
                       Arrays.fill(remain, 4);
@@ -3981,14 +4694,14 @@ jobs:
                           if (r < 10) continue;
                           sb.append(rankText(r)).append('×').append(Math.max(0, remain[r])).append("  ");
                       }
-                      RectF panel = new RectF(width * 0.015f, height * 0.88f,
-                              width * 0.41f, height * 0.965f);
+                      RectF panel = new RectF(width * 0.018f, height * 0.495f,
+                              width * 0.305f, height * 0.575f);
                       paint.setColor(0x7700130F);
                       canvas.drawRoundRect(panel, dp(10), dp(10), paint);
                       drawCenteredText(canvas, sb.toString(), panel.centerX(), panel.centerY(),
                               height * 0.022f, 0xFFA8F0C8, false);
                   }
-
+          
                   private RectF drawCard(Canvas canvas, Card card, float x, float y, float cw, float ch, boolean glow) {
                       RectF shadow = new RectF(x + dp(4), y + dp(5), x + cw + dp(4), y + ch + dp(5));
                       paint.setColor(0x55000000);
@@ -3996,10 +4709,10 @@ jobs:
                       RectF rect = new RectF(x, y, x + cw, y + ch);
                       paint.setColor(card.selected ? 0xFFFFF4C7 : 0xFFFAFAF7);
                       canvas.drawRoundRect(rect, dp(8), dp(8), paint);
-                      stroke.setColor(glow ? 0xFFFFD85A : 0xFFB8B8B8);
-                      stroke.setStrokeWidth(glow ? dp(3) : dp(1));
+                      stroke.setColor(card.selected ? 0xFFFFC43D : (glow ? 0xFFFFD85A : 0xFFB8B8B8));
+                      stroke.setStrokeWidth(card.selected ? dp(3.5f) : (glow ? dp(3) : dp(1)));
                       canvas.drawRoundRect(rect, dp(8), dp(8), stroke);
-
+          
                       int color = (card.suit == 1 || card.suit == 3 || card.rank == 17)
                               ? 0xFFD62F2F : 0xFF202020;
                       String rank = rankText(card.rank);
@@ -4018,7 +4731,7 @@ jobs:
                               x + cw * 0.56f, y + ch * 0.70f, paint);
                       return rect;
                   }
-
+          
                   private void drawCardBack(Canvas canvas, float x, float y, float cw, float ch) {
                       RectF rect = new RectF(x, y, x + cw, y + ch);
                       paint.setColor(0xFF194F8A);
@@ -4039,7 +4752,7 @@ jobs:
                       diamond.close();
                       canvas.drawPath(diamond, paint);
                   }
-
+          
                   private void drawButton(Canvas canvas, RectF rect, String text, int bg, int fg,
                                           float size, boolean selected) {
                       paint.setColor(bg);
@@ -4053,7 +4766,7 @@ jobs:
                       }
                       drawCenteredText(canvas, text, rect.centerX(), rect.centerY(), size, fg, true);
                   }
-
+          
                   private void drawCenteredText(Canvas canvas, String text, float cx, float cy,
                                                 float size, int color, boolean bold) {
                       paint.setColor(color);
@@ -4064,7 +4777,7 @@ jobs:
                       Paint.FontMetrics fm = paint.getFontMetrics();
                       canvas.drawText(text, cx, cy - (fm.ascent + fm.descent) / 2f, paint);
                   }
-
+          
                   @Override
                   public boolean onTouchEvent(MotionEvent event) {
                       if (event.getAction() != MotionEvent.ACTION_DOWN) return true;
@@ -4078,8 +4791,13 @@ jobs:
                           showRules();
                           return true;
                       }
+                      if (counterBtn.contains(x, y)) {
+                          showCounter = !showCounter;
+                          invalidate();
+                          return true;
+                      }
                       if (aiThinking) return true;
-
+          
                       if (state == STATE_BIDDING && currentTurn == 0) {
                           for (int i = 0; i < 4; i++) {
                               if (bidBtns[i].contains(x, y)) {
@@ -4096,16 +4814,12 @@ jobs:
                       if (state == STATE_PLAYING && currentTurn == 0) {
                           for (int i = humanCardRects.size() - 1; i >= 0; i--) {
                               if (humanCardRects.get(i).contains(x, y)) {
+                                  clearHintTracking();
                                   Card card = humanRectCards.get(i);
                                   card.selected = !card.selected;
                                   invalidate();
                                   return true;
                               }
-                          }
-                          if (counterBtn.contains(x, y)) {
-                              showCounter = !showCounter;
-                              invalidate();
-                              return true;
                           }
                           if (hintBtn.contains(x, y)) {
                               applyHint();
@@ -4124,7 +4838,7 @@ jobs:
                       }
                       return true;
                   }
-
+          
                   private boolean handleMenuTouch(float x, float y) {
                       if (backBtn.contains(x, y)) {
                           finish();
@@ -4141,15 +4855,15 @@ jobs:
                               return true;
                           }
                       }
-                      RectF start = new RectF(width * 0.36f, height * 0.62f,
-                              width * 0.64f, height * 0.74f);
+                      RectF start = new RectF(width * 0.36f, height * 0.65f,
+                              width * 0.64f, height * 0.77f);
                       if (start.contains(x, y)) {
                           startNewGame();
                           return true;
                       }
                       return true;
                   }
-
+          
                   private void startNewGame() {
                       aiToken.incrementAndGet();
                       for (ArrayList<Card> hand : hands) hand.clear();
@@ -4174,7 +4888,7 @@ jobs:
                       invalidate();
                       maybeScheduleAi();
                   }
-
+          
                   private void handleBid(int player, int bid) {
                       if (state != STATE_BIDDING || player != currentTurn) return;
                       bidTurns++;
@@ -4204,19 +4918,32 @@ jobs:
                       invalidate();
                       maybeScheduleAi();
                   }
-
+          
                   private void maybeScheduleAi() {
                       if ((state != STATE_BIDDING && state != STATE_PLAYING) || currentTurn == 0 || aiThinking) return;
                       int token = aiToken.incrementAndGet();
                       aiThinking = true;
                       message = playerName(currentTurn) + (state == STATE_BIDDING ? "正在叫分" : "正在思考");
                       invalidate();
+                      long visualDelay = difficulty == AiEngine.OMNISCIENT ? 820L
+                              : difficulty == AiEngine.MASTER ? 720L
+                              : difficulty == AiEngine.HARD ? 620L : 520L;
                       handler.postDelayed(() -> {
                           if (token != aiToken.get() || currentTurn == 0) { aiThinking = false; return; }
                           final int acting = currentTurn;
+          
+                          @SuppressWarnings("unchecked")
+                          ArrayList<Card>[] allHands = new ArrayList[]{
+                                  new ArrayList<>(hands[0]),
+                                  new ArrayList<>(hands[1]),
+                                  new ArrayList<>(hands[2])
+                          };
+                          ArrayList<Card> bottomSnapshot = new ArrayList<>(bottomCards);
+          
                           if (state == STATE_BIDDING) {
                               executor.execute(() -> {
-                                  int bid = ai.bid(new ArrayList<>(hands[acting]), highestBid, difficulty);
+                                  int bid = ai.bid(acting, new ArrayList<>(hands[acting]), highestBid,
+                                          difficulty, allHands, bottomSnapshot);
                                   handler.post(() -> {
                                       if (token != aiToken.get() || state != STATE_BIDDING || currentTurn != acting) return;
                                       aiThinking = false;
@@ -4232,10 +4959,12 @@ jobs:
                                       : new Combo(tableCombo.type, tableCombo.mainRank,
                                       tableCombo.cardCount, tableCombo.serialLength);
                               int last = lastPlayPlayer;
+                              int passes = passCount;
                               int ll = landlord;
                               executor.execute(() -> {
-                                  Play play = ai.choosePlay(acting, own, tableCopy, last, ll,
-                                          remains, played, difficulty, deadline);
+                                  Play play = ai.choosePlay(acting, own, tableCopy, last, passes, ll,
+                                          remains, played, bottomSnapshot, allHands,
+                                          difficulty, deadline);
                                   handler.post(() -> {
                                       if (token != aiToken.get() || state != STATE_PLAYING || currentTurn != acting) return;
                                       aiThinking = false;
@@ -4244,9 +4973,9 @@ jobs:
                                   });
                               });
                           }
-                      }, difficulty == AiEngine.EASY ? 280L : 430L);
+                      }, visualDelay);
                   }
-
+          
                   private void playSelected() {
                       ArrayList<Card> selected = new ArrayList<>();
                       for (Card c : hands[0]) if (c.selected) selected.add(c);
@@ -4268,7 +4997,7 @@ jobs:
                       }
                       playCards(0, selected, combo);
                   }
-
+          
                   private void playCards(int player, List<Card> cards, Combo combo) {
                       for (Card c : cards) {
                           for (int i = 0; i < hands[player].size(); i++) {
@@ -4303,7 +5032,7 @@ jobs:
                       invalidate();
                       maybeScheduleAi();
                   }
-
+          
                   private void passTurn(int player) {
                       if (tableCombo == null) return;
                       passCount++;
@@ -4322,43 +5051,78 @@ jobs:
                       invalidate();
                       maybeScheduleAi();
                   }
-
+          
                   private void applyHint() {
+                      if (hintSelectionActive && currentSelectionMatchesHint()) {
+                          clearSelection();
+                          message = "已取消提示";
+                          invalidate();
+                          return;
+                      }
                       Play hint = ai.chooseHint(hands[0], tableCombo);
                       if (hint == null) {
+                          clearSelection();
                           message = "没有可以压过的牌";
                           invalidate();
                           return;
                       }
                       clearSelection();
                       for (Card h : hint.cards) {
-                          for (Card c : hands[0]) if (c.id == h.id) { c.selected = true; break; }
+                          for (Card c : hands[0]) {
+                              if (c.id == h.id) {
+                                  c.selected = true;
+                                  hintedCardIds.add(c.id);
+                                  break;
+                              }
+                          }
                       }
-                      message = "提示：" + DoudizhuRules.typeName(hint.combo);
+                      hintSelectionActive = !hintedCardIds.isEmpty();
+                      message = "提示：" + DoudizhuRules.typeName(hint.combo) + "（再次点击可取消）";
                       invalidate();
                   }
-
+          
+                  private boolean currentSelectionMatchesHint() {
+                      if (!hintSelectionActive || hintedCardIds.isEmpty()) return false;
+                      int selectedCount = 0;
+                      for (Card c : hands[0]) {
+                          if (!c.selected) continue;
+                          selectedCount++;
+                          if (!hintedCardIds.contains(c.id)) return false;
+                      }
+                      return selectedCount == hintedCardIds.size();
+                  }
+          
+                  private void clearHintTracking() {
+                      hintSelectionActive = false;
+                      hintedCardIds.clear();
+                  }
+          
                   private void clearSelection() {
                       for (Card c : hands[0]) c.selected = false;
+                      clearHintTracking();
                   }
-
+          
                   private void showRules() {
                       String text = "【基本规则】\n"
                               + "三人斗地主，共54张牌。地主20张，两个农民各17张；地主先出，依次压牌。两名农民任意一人先出完即农民获胜。\n\n"
                               + "【支持牌型】\n"
                               + "单张、对子、三张、三带一、三带二、顺子、连对、飞机、飞机带单、飞机带对、四带二、四带两对、炸弹、王炸。2和大小王不能进入顺子、连对或飞机主体。\n\n"
                               + "【四档AI】\n"
-                              + "简单：快速基础决策；普通：牌型与剩余手数评估；困难：加入未知牌抽样和控牌判断；大师：扩大抽样、强化农民配合和残局封锁。\n"
-                              + "最大思考时间约为0.35秒、0.85秒、1.9秒、3.6秒，达到上限会使用当前最优结果。\n\n"
+                              + "普通：不读取暗牌，依据公开信息、牌型结构和未知牌抽样决策，单步最大约10秒。\n"
+                              + "困难：增加候选牌、抽样规模与控牌判断，减少不必要拆牌，单步最大约18秒。\n"
+                              + "大师：进一步强化概率推演、残局封锁和农民协作，决策随机性接近于零，单步最大约22秒。\n"
+                              + "透视：直接读取三家的真实手牌，叫分时也会参考底牌与对手真实强度；使用迭代加深、联盟式极大极小搜索、Alpha-Beta裁剪、局面缓存和残局强制求解。地主独立成队，两名农民共享胜负目标，单步最大约22秒。局面简单时会提前落牌。\n\n"
+                              + "【农民配合】\n"
+                              + "普通、困难和大师根据公开信息判断让牌与拦截；难度越高，越重视队友剩余张数和地主的紧迫威胁。透视模式会直接读取队友与地主的完整剩牌，搜索让队友走完、封锁地主或自己收尾的真实路线。\n\n"
                               + "【操作】\n"
-                              + "点击手牌抬起/放下，点击出牌；提示可自动选牌；记牌器统计尚未出现在你视野中的高价值牌。游戏必须横屏。";
+                              + "点击手牌抬起或放下；提示会自动选牌，再点一次提示可取消。记牌器默认隐藏，入口位于右上角“说明”旁边。游戏必须横屏。";
                       new AlertDialog.Builder(PokerActivity.this)
                               .setTitle("斗地主规则与AI说明")
                               .setMessage(text)
                               .setPositiveButton("知道了", null)
                               .show();
                   }
-
+          
                   private void showGameOverDialog() {
                       if (isFinishing() || state != STATE_GAME_OVER) return;
                       new AlertDialog.Builder(PokerActivity.this)
@@ -4368,11 +5132,12 @@ jobs:
                               .setNegativeButton("返回菜单", (d, w) -> {
                                   state = STATE_MENU;
                                   message = "请选择难度开始游戏";
+                                  clearSelection();
                                   invalidate();
                               })
                               .show();
                   }
-
+          
                   private void confirmExit() {
                       new AlertDialog.Builder(PokerActivity.this)
                               .setTitle("退出斗地主")
@@ -4381,11 +5146,11 @@ jobs:
                               .setNegativeButton("继续游戏", null)
                               .show();
                   }
-
+          
                   private String playerName(int player) {
                       return player == 0 ? "你" : "AI " + player;
                   }
-
+          
                   private String rankText(int rank) {
                       if (rank >= 3 && rank <= 10) return String.valueOf(rank);
                       if (rank == 11) return "J";
@@ -4396,7 +5161,7 @@ jobs:
                       if (rank == 16) return "小王";
                       return "大王";
                   }
-
+          
                   private String suitText(Card card) {
                       if (card.rank >= 16) return card.rank == 17 ? "★" : "☆";
                       switch (card.suit) {
@@ -4406,27 +5171,34 @@ jobs:
                           default: return "♦";
                       }
                   }
-
+          
                   private float dp(float v) { return v * density; }
               }
           }
 
           JAVA_POKER
 
-          # 斗地主源码完整性检查
+          # 源码与配置完整性检查
           test -s app/src/main/java/com/gomoku/app/PokerActivity.java
           grep -q 'public class PokerActivity extends Activity' app/src/main/java/com/gomoku/app/PokerActivity.java
-          grep -q 'static final int MASTER = 3' app/src/main/java/com/gomoku/app/PokerActivity.java
+          grep -q 'static final int NORMAL = 0' app/src/main/java/com/gomoku/app/PokerActivity.java
+          grep -q 'static final int HARD = 1' app/src/main/java/com/gomoku/app/PokerActivity.java
+          grep -q 'static final int MASTER = 2' app/src/main/java/com/gomoku/app/PokerActivity.java
+          grep -q 'static final int OMNISCIENT = 3' app/src/main/java/com/gomoku/app/PokerActivity.java
+          grep -q 'choosePerfectInfoPlay' app/src/main/java/com/gomoku/app/PokerActivity.java
           grep -q 'SCREEN_ORIENTATION_SENSOR_LANDSCAPE' app/src/main/java/com/gomoku/app/PokerActivity.java
           grep -q 'android:name=".PokerActivity"' app/src/main/AndroidManifest.xml
-          
-          
-          
+          grep -q 'android:label="棋牌三合一"' app/src/main/AndroidManifest.xml
+
           test -s app/src/main/java/com/gomoku/app/MainActivity.java
           grep -q '^package com\.gomoku\.app;' app/src/main/java/com/gomoku/app/MainActivity.java
           grep -q 'public class MainActivity extends Activity' app/src/main/java/com/gomoku/app/MainActivity.java
           grep -q 'G_MAX_USER_DEPTH = 15' app/src/main/java/com/gomoku/app/MainActivity.java
           grep -q 'X_MAX_USER_DEPTH = 12' app/src/main/java/com/gomoku/app/MainActivity.java
+          if grep -q '【AI改进】' app/src/main/java/com/gomoku/app/MainActivity.java; then
+              echo "棋类说明中仍存在旧的 AI 改进段落" >&2
+              exit 1
+          fi
 
       - name: Build debug APK
         run: gradle --no-daemon --stacktrace assembleDebug
@@ -4434,7 +5206,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Gomoku-AI-APK
+          name: Board-Games-3-in-1-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
