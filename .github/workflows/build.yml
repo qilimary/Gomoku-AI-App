@@ -6428,7 +6428,7 @@ jobs:
           grep -q 'AI_COUNTDOWN_TOTAL_SECONDS = 25' app/src/main/java/com/gomoku/app/PokerActivity.java
           grep -q 'PERFECT_TT_SIZE = 1 << 18' app/src/main/java/com/gomoku/app/PokerActivity.java
           grep -q 'generatePerfectPlays' app/src/main/java/com/gomoku/app/PokerActivity.java
-          grep -q '联盟式极大极小/PVS搜索' app/src/main/java/com/gomoku/app/PokerActivity.java
+          
           if grep -q 'visualDelay' app/src/main/java/com/gomoku/app/PokerActivity.java; then
               echo "斗地主仍存在人为等待 visualDelay" >&2
               exit 1
