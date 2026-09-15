@@ -16,20 +16,66 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Use preinstalled Android SDK 34
+        shell: bash
+        run: |
+          set -euo pipefail
+          android_sdk_dir="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          if [[ ! -d "$android_sdk_dir" ]]; then
+            printf '::error::Android SDK directory not found: %s\n' "$android_sdk_dir"
+            exit 1
+          fi
+          printf 'ANDROID_HOME=%s\nANDROID_SDK_ROOT=%s\n' \
+            "$android_sdk_dir" "$android_sdk_dir" >> "$GITHUB_ENV"
+
+          # GitHub's Ubuntu image already provides the SDK. Keep its working tools;
+          # do not download another command-line-tools version on every build.
+          missing_packages=()
+          if [[ ! -f "$android_sdk_dir/platforms/android-34/android.jar" ]]; then
+            missing_packages+=("platforms;android-34")
+          fi
+          for sdk_tool in aapt2 zipalign apksigner; do
+            if [[ ! -x "$android_sdk_dir/build-tools/34.0.0/$sdk_tool" ]]; then
+              missing_packages+=("build-tools;34.0.0")
+              break
+            fi
+          done
+
+          if (( ${#missing_packages[@]} > 0 )) || [[ ! -s "$android_sdk_dir/licenses/android-sdk-license" ]]; then
+            sdk_manager="$android_sdk_dir/cmdline-tools/latest/bin/sdkmanager"
+            if [[ ! -x "$sdk_manager" ]]; then
+              sdk_manager="$(command -v sdkmanager || true)"
+            fi
+            if [[ -z "$sdk_manager" || ! -x "$sdk_manager" ]]; then
+              printf '::error::The runner is missing sdkmanager.\n'
+              exit 1
+            fi
+            license_answers="$RUNNER_TEMP/gomoku-android-license-answers.txt"
+            for ((answer=0; answer<128; answer++)); do printf 'y\n'; done > "$license_answers"
+            # File input avoids a broken-pipe failure from a yes | sdkmanager pipeline.
+            "$sdk_manager" --sdk_root="$android_sdk_dir" --licenses < "$license_answers"
+            if (( ${#missing_packages[@]} > 0 )); then
+              "$sdk_manager" --sdk_root="$android_sdk_dir" --install "${missing_packages[@]}" < "$license_answers"
+            fi
+          fi
+
+          test -f "$android_sdk_dir/platforms/android-34/android.jar"
+          for sdk_tool in aapt2 zipalign apksigner; do
+            test -x "$android_sdk_dir/build-tools/34.0.0/$sdk_tool"
+          done
+          printf 'Android SDK 34 and Build Tools 34.0.0 are ready.\n'
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
       - name: Generate complete project from the second upload file
         run: python3 build_project.py --output generated-app
       - name: AI regression tests
@@ -39,7 +85,7 @@ jobs:
         working-directory: generated-app
         run: ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:lintDebug
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Board-Games-v1.10.0
           path: generated-app/app/build/outputs/apk/debug/*.apk
